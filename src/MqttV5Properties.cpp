@@ -19,6 +19,21 @@ namespace MqttV5
         PropertyCore* head;
         PropertyCore* reference;  //!< Maximum size of the properties vector
         Impl() : head(nullptr), reference(nullptr) {}
+        Impl(Impl&& other) noexcept :
+            length(other.length), head(other.head), reference(other.reference) {
+            other.head = nullptr;
+            other.reference = nullptr;
+        }  //!< Move constructor for the Impl class
+        ~Impl() {
+            PropertyCore* current = head;
+            while (current != nullptr)
+            {
+                PropertyCore* next = current->next;
+                delete current;  // Delete the property
+                current = next;  // Move to the next property
+            }
+        }  //!< Destructor for the Impl class
+
         /* data */
     };
 
@@ -45,6 +60,11 @@ namespace MqttV5
             current = current->next;
         }
     }  //!< Copy constructor for the Properties class
+
+    Properties::Properties(Properties&& other) noexcept :
+        impl_(std::move(other.impl_)) {  // Transfer ownership of the implementation
+        other.impl_ = nullptr;           // Ensure the moved-from object is in a valid state
+    }
 
     Properties& Properties::operator=(const Properties& other) {
         if (this != &other)
