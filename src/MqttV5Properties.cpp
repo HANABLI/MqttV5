@@ -191,16 +191,16 @@ namespace MqttV5
         while (current != nullptr)
         {
             PropertyCore* newProperty = current->clone();
-            if (impl_->head == nullptr)
+            if (!impl_->head)
             {
                 impl_->head = newProperty;
+                impl_->reference = newProperty;
             } else
             {
-                PropertyCore* temp = impl_->head;
-                while (temp->next != nullptr)
-                { temp = temp->next; }
-                temp->next = newProperty;
+                impl_->reference->next = newProperty;
+                impl_->reference = newProperty;
             }
+
             current = current->next;
         }
         return true;  //!< Return true if the properties were captured successfully
