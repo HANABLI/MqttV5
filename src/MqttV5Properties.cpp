@@ -231,6 +231,8 @@ namespace MqttV5
                 current = next;
             }
             impl_->head = nullptr;
+            impl_->reference = nullptr;
+            impl_->length = 0;
         }
     }  //!< Clear the properties class
 
