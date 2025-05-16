@@ -16,7 +16,7 @@ using namespace MqttV5;
 using namespace MqttV5::Common;
 using namespace MqttV5::Mqtt_V5;
 
-TEST(PropertyTests, SerializeDeserialize_Uint16) {
+TEST(MqttV5PropertiesTest, SerializeDeserialize_Uint16) {
     // ID arbitraire de propriété
     PropertyId propId = PropertyId::AssignedClientID;
     uint16_t originalValue = 0xABCD;
@@ -51,7 +51,7 @@ TEST(PropertyTests, SerializeDeserialize_Uint16) {
     EXPECT_EQ(static_cast<uint16_t>(receivedValue), originalValue);
 }
 
-TEST(PropertyTests, PropertyFactoryTest) {
+TEST(MqttV5PropertiesTest, PropertyFactoryTest) {
     auto* prop1 = PropertyFactory<PropertyId::ReasonString, uint32_t>::create();
     auto* prop2 = PropertyFactory<PropertyId::ReasonString, uint32_t>::create(0xCAFEBABE);
 
