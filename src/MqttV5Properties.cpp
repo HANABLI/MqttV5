@@ -122,7 +122,11 @@ namespace MqttV5
         registerAllProperties();  // s’assurer que tous les types sont enregistrés
 
         uint32_t offset = 0;
-        while (offset < bufferSize)
+        offset += impl_->length.deserialize(buffer, bufferSize);
+        if ((uint32_t)impl_->length > bufferSize - impl_->length.getSerializedSize())
+            return NotEnoughData;
+        auto propSize = (uint32_t)impl_->length;
+        while (propSize)
         {
             PropertyId id = static_cast<PropertyId>(buffer[offset]);
 
