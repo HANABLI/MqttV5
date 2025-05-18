@@ -334,7 +334,7 @@ namespace MqttV5
             bool operator==(const DynamicString& other) const {
                 if (size != other.size)
                     return false;                                 // The sizes are different
-                return std::memcpy(data, other.data, size) == 0;  // Compare the data
+                return std::memcmp(data, other.data, size) == 0;  // Compare the data
             }  //!< Compare the strings for equality
 
             bool operator!=(const DynamicString& other) const {
