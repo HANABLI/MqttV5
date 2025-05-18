@@ -69,10 +69,10 @@ namespace MqttV5
         {
             virtual uint32_t typeSize() const = 0;  //!< Get the size of the type
 
-            virtual void swapNetworkOrder() const = 0;  //!< Swap the type to network order
+            virtual void swapNetworkOrder() = 0;  //!< Swap the type to network order
 
-            virtual void* raw() = 0;  //!< Get the raw data of the type
-
+            virtual void* raw() = 0;
+            virtual const void* raw() const = 0;  //!< Get the raw data of the type
             bool isValid() const { return true; }
         };
 
