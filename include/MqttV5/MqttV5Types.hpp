@@ -580,7 +580,6 @@ namespace MqttV5
                 if (bufferSize < size + sizeof(uint16_t))
                     return NotEnoughData;
 
-                delete[] data;
                 data = new uint8_t[size];
                 std::memcpy(data, buffer + sizeof(uint16_t), size);
 
