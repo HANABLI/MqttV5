@@ -749,7 +749,7 @@ namespace MqttV5
                 typeandFlags((uint8_t)((uint8_t)type << 4) | (flags & 0xF)) {
             }  //!< Constructor for the FixedHeaderBase class
             FixedHeaderBase() {}
-            ~FixedHeaderBase() {}  //!< Destructor for the FixedHeaderBase class
+            ~FixedHeaderBase() = default;  //!< Destructor for the FixedHeaderBase class
 
             virtual ControlPacketType getType() const {
                 return (ControlPacketType)(typeandFlags >> 4);
