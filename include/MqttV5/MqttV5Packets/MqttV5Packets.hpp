@@ -677,8 +677,9 @@ namespace MqttV5
 
         void setWillMessage(WillMessage* msg) { willMessage = msg; }
         void setFlags(const FixedFieldGeneric& flags) {
-            fixedHeader = (FixedField<CONNECT>*)&flags;  //!< Set the fixed header
-        }                                                //!< Set the flags for the connect packet
+            fixedHeader =
+                (FixedField<ControlPacketType::CONNECT>*)&flags;  //!< Set the fixed header
+        }  //!< Set the flags for the connect packet
 
         bool checkClientID() const {
             // TODO: check allowed charachters in the client id
