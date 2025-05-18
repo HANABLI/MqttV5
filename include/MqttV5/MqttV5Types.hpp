@@ -631,10 +631,11 @@ namespace MqttV5
              * @param size The size of the dynamic binary data.
              */
             DynamicBinaryData() : data(nullptr), size(0) {}
-            DynamicBinaryData(const uint8_t* src, uint16_t sz) : data(nullptr), size(sz) {
+            DynamicBinaryData(const uint8_t* src, uint16_t sz) :
+                data(sz ? (uint8_t*)std::malloc(sz) : (uint8_t*)0), size(sz) {
                 if (size > 0 && src)
                 {
-                    data = new uint8_t[size];
+                    // data = new uint8_t[size];
                     std::memcpy(data, src, size);
                 }
             }
