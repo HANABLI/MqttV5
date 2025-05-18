@@ -328,8 +328,8 @@ namespace MqttV5
 
             ~DynamicString() {
                 if (data != nullptr)
-                    delete[] data;  // Delete the data if it is not null
-            }                       //!< Destructor for the DynamicString class
+                    free(data);  // Delete the data if it is not null
+            }                    //!< Destructor for the DynamicString class
 
             bool operator==(const DynamicString& other) const {
                 if (size != other.size)
@@ -640,9 +640,9 @@ namespace MqttV5
             }
 
             ~DynamicBinaryData() {
-                delete[] data;
+                free(data);
                 size = 0;
-            }  //!< Destructor for the DynamicBinaryData class
+            };
         };
 
         /**
