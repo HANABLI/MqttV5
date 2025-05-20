@@ -818,7 +818,7 @@ namespace MqttV5
         uint8_t* data;      //!< Pointer to the data
         uint32_t dataSize;  //!< Size of the data
 
-        inline void setDataSize(const uint32_t size) {
+        inline void setExpectedPacketSize(const uint32_t size) {
             dataSize = size;  //!< Set the size of the data
         }                     //!< Set the size of the data
 
