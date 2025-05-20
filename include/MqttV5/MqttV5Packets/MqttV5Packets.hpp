@@ -585,25 +585,46 @@ namespace MqttV5
     {
         GenericType<TopicAndID> value;  //!< The value of the type
     private:
-        uint8_t* flags;  //!< Flags for the fixed field
+        const uint8_t* flags;  //!< Flags for the fixed field
     public:
         FixedField() :
             FixedFieldGeneric(value),
             value(*this),
             flags(0) {}  //!< Default constructor for the FixedField class
 
+        uint32_t getSerializedSize() const override {
+            return topicName.getSerializedSize() + (hasPacketID() ? sizeof(packetID) : 0);
+        }  //!< Get the size of the fixed field
+
+        uint32_t serialize(uint8_t* buffer) override {
+            uint32_t offset = topicName.serialize(buffer);  // Serialize the topic name
+            if (hasPacketID())
+            {
+                uint16_t p = BigEndian(packetID);
+                memcpy(buffer + offset, &p, sizeof(p));  // Copy the packet ID to the buffer
+                                                         // Swap the packet ID to network order
+                offset += sizeof(packetID);              // Increment the offset
+            }
+            return offset;  // Return the size of the fixed field
+        }                   //!< Serialize the object into the buffer
+
         uint32_t deserialize(const uint8_t* buffer, uint32_t bufferSize) override {
             uint32_t offset =
-                FixedFieldGeneric::deserialize(buffer, bufferSize);  // Deserialize the fixed field
+                topicName.deserialize(buffer, bufferSize);  // Deserialize the fixed field
             if (offset >= Shortcut)
             {
                 return offset;  // Return the size of the fixed field
             }
             if (hasPacketID())
             {
-                memcpy(&packetID, buffer, sizeof(packetID));  // Copy the packet ID from the buffer
-                packetID = BigEndian(packetID);               // Swap the packet ID to host order
-                offset += sizeof(packetID);                   // Increment the offset
+                if (bufferSize < offset + sizeof(packetID))
+                {
+                    return NotEnoughData;  // Not enough data
+                }
+                memcpy(&packetID, buffer + offset,
+                       sizeof(packetID));        // Copy the packet ID from the buffer
+                packetID = BigEndian(packetID);  // Swap the packet ID to host order
+                offset += sizeof(packetID);      // Increment the offset
             }
 
             return offset;  // Return the size of the fixed field
