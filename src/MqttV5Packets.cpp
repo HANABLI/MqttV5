@@ -14,7 +14,7 @@ namespace MqttV5
     using namespace Common;
     using namespace Mqtt_V5;
 
-    ConnectPacket* PacketsBuilder::buildConnectPacket(
+    ControlPacketSerializable* PacketsBuilder::buildConnectPacket(
         const char* clientId, const char* username, const DynamicBinaryData* password,
         bool cleanSession, uint16_t keepAlive, WillMessage* willMessage, const QoSDelivery willQoS,
         const bool willRetain, Properties* properties) {

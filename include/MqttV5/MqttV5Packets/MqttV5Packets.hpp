@@ -1301,12 +1301,66 @@ namespace MqttV5
     class PacketsBuilder
     {
     public:
-        static ConnectPacket* buildConnectPacket(
+        static ControlPacketSerializable* buildConnectPacket(
             const char* clientId = "", const char* username = "",
             const DynamicBinaryData* password = nullptr, bool cleanSession = true,
             uint16_t keepAlive = 60, WillMessage* willMessage = nullptr,
             const QoSDelivery willQoS = QoSDelivery::AtLeastOne, const bool willRetain = true,
             Properties* properties = nullptr);
+
+        static ControlPacketSerializable* buildSubscribePacket(
+            const uint16_t packetID = 0, const char* topic = "",
+            const RetainHandling = RetainHandling::NoRetainedMessage,
+            const bool withAutoFeedBack = false,
+            const QoSDelivery maxAcceptedQos = QoSDelivery::ExactlyOne,
+            const bool retainAsPublished = true, Properties* properties = nullptr);
+
+        static ControlPacketSerializable* buildSubscribePacket(const uint16_t packetID = 0,
+                                                               SubscribeTopic* topicList = nullptr,
+                                                               Properties* properties = nullptr);
+
+        static ControlPacketSerializable* buildUnsubscribePacket(
+            const uint16_t packetID = 0, UnsubscribeTopic* topicList = nullptr,
+            Properties* properties = nullptr);
+
+        static ControlPacketSerializable* buildPublishPacket(
+            const uint16_t packetID = 0, const char* topicName = "",
+            const uint8_t* payload = nullptr, const uint32_t payloadSize = 0,
+            const QoSDelivery qos = QoSDelivery::AtLeastOne, const bool retain = false,
+            Properties* properties = nullptr);
+
+        static ControlPacketSerializable* buildPublishReplayPacket(
+            const uint16_t packetID, const QoSDelivery qos = QoSDelivery::AtLeastOne,
+            const bool dup = false, Properties* properties = nullptr);
+
+        static ControlPacketSerializable* buildPingPacket();
+        static ControlPacketSerializable* buildDisconnectPacket(const uint16_t packetID = 0,
+                                                                Properties* properties = nullptr);
+        static ControlPacketSerializable* buildAuthPacket(
+            const ReasonCode reasonCode, const uint16_t sessionExpiryInterval,
+            const uint8_t serverKeepAlive, const DynamicStringView& uthenticationMethod,
+            const DynamicBinaryDataView& authData, Properties* properties = nullptr);
+        static ControlPacketSerializable* buildConAckPacket(const uint8_t sessionPresent,
+                                                            const uint8_t reasonCode,
+                                                            Properties* properties = nullptr);
+        static ControlPacketSerializable* buildSubAckPacket(const uint16_t packetID,
+                                                            const uint8_t reasonCode,
+                                                            Properties* properties = nullptr);
+        static ControlPacketSerializable* buildUnsubAckPacket(const uint16_t packetID,
+                                                              const uint8_t reasonCode,
+                                                              Properties* properties = nullptr);
+        static ControlPacketSerializable* buildPubAckPacket(const uint16_t packetID,
+                                                            const uint8_t reasonCode,
+                                                            Properties* properties = nullptr);
+        static ControlPacketSerializable* buildPubRecPacket(const uint16_t packetID,
+                                                            const uint8_t reasonCode,
+                                                            Properties* properties = nullptr);
+        static ControlPacketSerializable* buildPubRelPacket(const uint16_t packetID,
+                                                            const uint8_t reasonCode,
+                                                            Properties* properties = nullptr);
+        static ControlPacketSerializable* buildPubCompPacket(const uint16_t packetID,
+                                                             const uint8_t reasonCode,
+                                                             Properties* properties = nullptr);
 
         PacketsBuilder() = delete;                       //!< Delete the default constructor
         PacketsBuilder(const PacketsBuilder&) = delete;  //!< Delete the copy constructor
