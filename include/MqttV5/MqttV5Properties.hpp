@@ -30,7 +30,7 @@ namespace MqttV5
     {
         PropertyId id;  //!< The ID of the property
 
-        PropertyCore* next;  //!< Pointer to the next property in the list
+        PropertyCore* next = nullptr;  //!< Pointer to the next property in the list
         bool heapAllocated;  //!< Flag to indicate if the property is heap allocated
 
         uint32_t getSerializedSize() const override {
