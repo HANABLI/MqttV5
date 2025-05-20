@@ -554,7 +554,7 @@ namespace MqttV5
     template <>
     struct GenericType<TopicAndID> final : public GenericTypeBase
     {
-        TopicAndID value;  //!< The value of the type
+        TopicAndID& value;  //!< The value of the type
 
         GenericType<TopicAndID>& operator=(const TopicAndID& o) {
             value = o;
@@ -839,6 +839,7 @@ namespace MqttV5
             {
                 return NotEnoughData;  // Not enough data
             }
+            data = new uint8_t[dataSize];    // Allocate memory for the data
             memcpy(data, buffer, dataSize);  // Copy the data from the buffer
             return dataSize;                 // Return the size of the payload
         }                                    //!< Deserialize the payload from the buffer
