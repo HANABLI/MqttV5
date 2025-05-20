@@ -143,6 +143,7 @@ namespace MqttV5
             }
 
             addProperty(prop);
+            propSize -= readSize;
             offset += readSize;
         }
 
