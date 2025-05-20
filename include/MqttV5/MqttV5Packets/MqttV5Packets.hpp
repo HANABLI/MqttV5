@@ -1245,16 +1245,14 @@ namespace MqttV5
     };
 
     template <ControlPacketType type>
-    struct PingPacket : public ControlPacketSerializableImpl
+    struct PingPacket : public ControlPacketSerializable
     {
         typename ControlPacketCore<type>::FixedHeader header;
-        FixedFieldWithIDAndReasonCode dummyFixedVariableHeader;
-        Properties dummyProps;
-        SerializablePayload dummyPayload;
 
-        PingPacket() :
-            ControlPacketSerializableImpl(header, dummyFixedVariableHeader, dummyProps,
-                                          dummyPayload) {}
+        PingPacket() {}
+        uint32_t computePacketSize(const bool includePayload = true) override {
+            return header.getSerializedSize();  //!< Get the size of the packet
+        }                                       //!< Get the size of the packet
 
         uint32_t getSerializedSize() const override {
             return header.getSerializedSize();  //!< Get the size of the packet
