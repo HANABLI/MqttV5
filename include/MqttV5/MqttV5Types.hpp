@@ -83,18 +83,20 @@ namespace MqttV5
 
             GenericType(T value = 0) : value(value) {}  //!< Constructor for the GenericType class
             operator T&() { return value; }
+            operator const T&() const { return value; }
             GenericType& operator=(const T v) {
                 value = v;
                 return *this;
             }
             uint32_t typeSize() const override { return sizeof(T); }  //!< Get the size of the type
 
-            void swapNetworkOrder() const override {
+            void swapNetworkOrder() override {
                 // Swap the type to network order
-                const_cast<T&>(value) = BigEndian(value);
+                value = BigEndian(value);
             }  //!< Swap the type to network order
 
             void* raw() override { return &value; }  //!< Get the raw data of the type
+            const void* raw() const override { return &value; }
         };
 
         /**
