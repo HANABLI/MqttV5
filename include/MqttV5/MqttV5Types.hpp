@@ -77,7 +77,7 @@ namespace MqttV5
         };
 
         template <typename T>
-        struct GenericType : public GenericTypeBase
+        struct GenericType final : public GenericTypeBase
         {
             T value;  //!< The value of the type
 
