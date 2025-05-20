@@ -1184,14 +1184,17 @@ namespace MqttV5
         SerializablePayload& payload;
 
         uint32_t computePacketSize(const bool includePayload = true) override {
-            uint32_t size = fixedVariableHeader.getSerializedSize() + props.getSerializedSize();
             if (includePayload)
             {
-                size += payload.getSerializedSize();  // Add the payload size
-                remainingLength = size;
+                uint32_t offset = fixedVariableHeader.getSerializedSize() +
+                                  props.getSerializedSize() +
+                                  payload.getSerializedSize();  // Get the offset of the payload
+
+                remainingLength = offset;
+                return offset + 1 + remainingLength.getSerializedSize();
             }
-            remainingLength = (uint32_t)remainingLength - size;
-            return (uint32_t)remainingLength;  // Return the size of the packet
+            return (uint32_t)remainingLength - fixedVariableHeader.getSerializedSize() -
+                   props.getSerializedSize();  // Return the size of the packet
         }
 
         uint32_t getSerializedSize() const override {
