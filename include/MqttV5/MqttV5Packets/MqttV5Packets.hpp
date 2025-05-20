@@ -31,7 +31,7 @@ namespace MqttV5
     {
         virtual void setFlags(const uint8_t&) {}
 
-        virtual void setRemainingLength(const uint32_t&) {}
+        virtual void setRemainingLength(const uint32_t) {}
 
         virtual uint32_t getSerializedSize() const {
             return 0;
@@ -83,7 +83,7 @@ namespace MqttV5
 
         virtual void setFlags(const uint8_t&) {}
 
-        virtual void setRemainingLength(const uint32_t&) {}
+        virtual void setRemainingLength(const uint32_t) {}
     };
 
     struct FixedFieldWithRemainingLength : public FixedFieldGeneric
@@ -94,7 +94,9 @@ namespace MqttV5
         FixedFieldWithRemainingLength(GenericTypeBase& v, uint32_t length) :
             FixedFieldGeneric(v),
             remainingLength(length) {}  //!< Constructor for the FixedFieldWithRemainingLength class
-
+        void setRemainingLength(uint32_t length) {
+            remainingLength = length;  //!< Set the remaining length of the packet
+        }                              //!< Set the remaining length of the packet
         uint32_t deserialize(const uint8_t* buffer, uint32_t bufferSize) override {
             uint32_t offset =
                 FixedFieldGeneric::deserialize(buffer, bufferSize);  // Deserialize the fixed field
