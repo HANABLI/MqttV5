@@ -612,6 +612,7 @@ namespace MqttV5
             }
 
             DynamicBinaryData(const DynamicBinaryData& other) {
+                size = other.size;
                 if (size > 0 && other.data)
                 {
                     data = new uint8_t[size];
