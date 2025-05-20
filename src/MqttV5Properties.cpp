@@ -105,8 +105,9 @@ namespace MqttV5
         if (!buffer)
             throw std::invalid_argument("Buffer cannot be null.");
         uint32_t offset = 0;
+        offset += impl_->length.serialize(buffer);
         PropertyCore* current = impl_->head;
-        while (current != nullptr)
+        while (current)
         {
             offset += current->serialize(buffer + offset);  // Serialize the object into the buffer
             current = current->next;                        // Move to the next property
