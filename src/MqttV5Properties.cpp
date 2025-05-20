@@ -154,6 +154,7 @@ namespace MqttV5
         if (property == nullptr)
             throw std::invalid_argument("Property cannot be null.");
         property->next = nullptr;  // Sécurité : couper toute chaîne existante
+        VBInt l((uint32_t)impl_->length + property->getSerializedSize());
 
         if (!impl_->head)
         {
@@ -164,6 +165,7 @@ namespace MqttV5
             impl_->reference->next = property;
             impl_->reference = property;
         }
+        impl_->length = l;
     }  //!< Add a property to the properties class
 
     PropertyCore* Properties::getProperty(PropertyId id) const {
