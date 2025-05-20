@@ -856,7 +856,7 @@ namespace MqttV5
     struct SubscribeTopicCore : public ISerializable
     {
         DynamicString topicName;
-        SubscribeTopicCore* next;
+        SubscribeTopicCore* next = nullptr;
 
     public:
         bool isValid() const {
@@ -891,7 +891,7 @@ namespace MqttV5
 
     public:
         SubscribeTopicCore() {}
-        SubscribeTopicCore(DynamicString& topic) : topicName(topic), next(0) {}
+        SubscribeTopicCore(const DynamicString& topic) : topicName(topic), next(0) {}
         virtual ~SubscribeTopicCore() { next = 0; }
     };
 
@@ -919,23 +919,36 @@ namespace MqttV5
 
         uint32_t serialize(uint8_t* buffer) override {
             uint32_t offset = topicName.serialize(buffer);  // Serialize the topic name
-            buffer[offset++] = option;                      // Serialize the option
+            buffer += offset;                               // Increment the offset
+            buffer[0] = option;                             // Serialize the option
+            offset += 1;                                    // Increment the offset
             if (next)
-                offset += next->serialize(buffer + offset);  // Serialize the next topic
-            return offset;                                   // Return the size of the payload
-        }  //!< Serialize the payload into the buffer
+                offset += next->serialize(buffer + 1);  // Serialize the next topic
+            return offset;                              // Return the size of the payload
+        }                                               //!< Serialize the payload into the buffer
 
         uint32_t deserialize(const uint8_t* buffer, uint32_t bufferSize) override {
-            uint32_t offset =
-                topicName.deserialize(buffer, bufferSize);  // Deserialize the topic name
-            if (offset == BadData)
-                return BadData;         // Invalid data
-            option = buffer[offset++];  // Deserialize the option
             if (next)
-                offset += next->deserialize(buffer + offset,
-                                            bufferSize - offset);  // Deserialize the next topic
-            return offset;                                         // Return the size of the payload
-        }  //!< Deserialize the payload from the buffer
+                next->suicide();
+            next = 0;
+            uint32_t offset = 0;
+            offset += topicName.deserialize(buffer, bufferSize);  // Deserialize the topic name
+            buffer += offset;
+            bufferSize -= offset;
+
+            if (!bufferSize)
+                return NotEnoughData;  // Invalid data
+            option = buffer[0];        // Deserialize the option
+            buffer++;
+            bufferSize--;
+            offset++;
+            if (bufferSize)
+            {
+                next = new SubscribeTopic();
+                offset += next->deserialize(buffer, bufferSize);
+            }               // Deserialize the next topic
+            return offset;  // Return the size of the payload
+        }                   //!< Deserialize the payload from the buffer
         bool checkImpl() const override {
             if (reserved == 0 && retainAsPublished != 3 && QoS != 3 &&
                 SubscribeTopicCore::isValid())
@@ -949,8 +962,8 @@ namespace MqttV5
             SubscribeTopicCore::append(newTopic);  //!< Append the new topic to the list
         }                                          //!< Append the new topic to the list
 
-        SubscribeTopic(DynamicString& topic, uint8_t retainedHandling, uint8_t retainAsPublished,
-                       uint8_t nonLocal, uint8_t QoS) :
+        SubscribeTopic(const DynamicString& topic, const RetainHandling retainedHandling,
+                       const bool retainAsPublished, const bool nonLocal, const QoSDelivery QoS) :
             SubscribeTopicCore(topic), option(0) {
             this->retainHandling = retainedHandling;
             this->retainAsPublished = retainAsPublished ? 1 : 0;
