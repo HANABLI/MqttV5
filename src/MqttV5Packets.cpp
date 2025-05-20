@@ -19,7 +19,6 @@ namespace MqttV5
         bool cleanSession, uint16_t keepAlive, WillMessage* willMessage, const QoSDelivery willQoS,
         const bool willRetain, Properties* properties) {
         // Implementation of the buildConnectPacket function
-        uint8_t* packet = nullptr;
 
         ConnectPacket* connectPacket = new ConnectPacket();
 
@@ -55,6 +54,74 @@ namespace MqttV5
             connectPacket->payload.password = *password;
 
         return connectPacket;
+    }
+
+    ControlPacketSerializable* PacketsBuilder::buildPublishPacket(
+        const uint16_t packetID, const char* topicName, const uint8_t* payload,
+        const uint32_t payloadSize, const QoSDelivery qos, const bool retain,
+        Properties* properties) {
+        // Implementation of the buildPublishPacket function
+        PublishPacket* publishPacket = new PublishPacket();
+
+        if (properties != nullptr)
+        { publishPacket->props.captureProperties(*properties); }
+
+        publishPacket->header.setRetained(retain);
+        publishPacket->header.setDuplicated(false);
+        publishPacket->header.setQos(qos);
+        publishPacket->fixedVariableHeader.packetID = packetID;
+        publishPacket->fixedVariableHeader.topicName = topicName;
+        publishPacket->payload.setExpectedPacketSize(payloadSize);
+        publishPacket->payload.deserialize(payload, payloadSize);
+
+        return publishPacket;
+    }
+
+    ControlPacketSerializable* PacketsBuilder::buildSubscribePacket(
+        const uint16_t packetID, const char* topic, const RetainHandling retainHandling,
+        const bool nonlocal, const QoSDelivery maxAcceptedQos, const bool retainAsPublished,
+        Properties* properties) {
+        // Implementation of the buildSubscribePacket function
+        SubscribeTopic* topicList =
+            new SubscribeTopic(topic, retainHandling, retainAsPublished, nonlocal, maxAcceptedQos);
+
+        return buildSubscribePacket(packetID, topicList, properties);
+    }
+
+    ControlPacketSerializable* PacketsBuilder::buildSubscribePacket(const uint16_t packetID,
+                                                                    SubscribeTopic* topicList,
+                                                                    Properties* properties) {
+        // Implementation of the buildSubscribePacket function
+        SubscribePacket* subscribePacket = new SubscribePacket();
+
+        if (properties != nullptr)
+        { subscribePacket->props.captureProperties(*properties); }
+
+        subscribePacket->fixedVariableHeader.packetID = packetID;
+        subscribePacket->payload.topicList = topicList;
+
+        return subscribePacket;
+    }
+
+    ControlPacketSerializable* PacketsBuilder::buildUnsubscribePacket(const uint16_t packetID,
+                                                                      UnsubscribeTopic* topicList,
+                                                                      Properties* properties) {
+        // Implementation of the buildUnsubscribePacket function
+        UnsubscribePacket* unsubscribePacket = new UnsubscribePacket();
+
+        if (properties != nullptr)
+        { unsubscribePacket->props.captureProperties(*properties); }
+
+        unsubscribePacket->payload.topicList = topicList;
+        unsubscribePacket->fixedVariableHeader.packetID = packetID;
+
+        return unsubscribePacket;
+    }
+
+    ControlPacketSerializable* PacketsBuilder::buildPingPacket() {
+        // Implementation of the buildPingPacket function
+        PingReqPacket* pingPacket = new PingReqPacket();
+        return pingPacket;
     }
 
 }  // namespace MqttV5
