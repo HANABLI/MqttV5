@@ -1021,6 +1021,7 @@ namespace MqttV5
         uint32_t expectedSize;
 
     public:
+        inline void setExpectedPacketSize(uint32_t sizeInBytes) { expectedSize = sizeInBytes; }
         uint32_t getSerializedSize() const override {
             return topicList ? topicList->getSerializedSize() : 0;
         }  //!< Get the size of the payload
