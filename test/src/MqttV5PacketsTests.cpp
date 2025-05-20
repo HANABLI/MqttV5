@@ -19,7 +19,7 @@ using namespace MqttV5::Mqtt_V5;
 
 struct MqttV5PacketsTests : public ::testing::Test
 {
-    Properties props;
+    static Properties props;
     Utf8::Utf8 utf;
 
     virtual void SetUp() override {
@@ -61,6 +61,8 @@ struct MqttV5PacketsTests : public ::testing::Test
     }
 };
 
+Properties MqttV5PacketsTests::props;
+
 TEST_F(MqttV5PacketsTests, buildandSerializeConnectPacket) {
     const char* clientId = "client";
     const char* userName = "user";
@@ -78,7 +80,7 @@ TEST_F(MqttV5PacketsTests, buildandSerializeConnectPacket) {
 
     auto packet = PacketsBuilder::buildConnectPacket(
         clientId, userName, &password, true, 60, &willMsg, QoSDelivery::AtLeastOne, true, &props);
-
+    packet->computePacketSize();
     ASSERT_TRUE(packet->checkImpl());
 
     uint8_t buffer[1024] = {};
@@ -116,5 +118,91 @@ TEST_F(MqttV5PacketsTests, buildandSerializeConnectPacket) {
     EXPECT_EQ(
         receivedPacket.payload.willMessage->willProperties.getProperty(PropertyId::ResponseTopic),
         nullptr);
-    props.clear();
+}
+
+TEST_F(MqttV5PacketsTests, buildPingPacket) {
+    uint16_t packetID = 0;
+    auto packet = PacketsBuilder::buildPingPacket();
+
+    ASSERT_TRUE(packet->checkImpl());
+
+    uint8_t buffer[1024] = {};
+    uint32_t serializedSize = packet->serialize(buffer);
+    packet->computePacketSize();
+    ASSERT_GT(serializedSize, 0);
+    ASSERT_LT(serializedSize, sizeof(buffer));
+
+    PingReqPacket receivedPacket;
+    uint32_t deserializableSize = receivedPacket.deserialize(buffer, serializedSize);
+
+    EXPECT_EQ(deserializableSize, serializedSize);
+    //    ASSERT_TRUE(receivedPacket.checkImpl());
+}
+
+TEST_F(MqttV5PacketsTests, buildSubscribePacket) {
+    const char* topicName = "test/topic";
+    const QoSDelivery qos = QoSDelivery::AtLeastOne;
+    const RetainHandling retainHandling = RetainHandling::NoRetainedMessage;
+    const uint16_t packetID = 0;
+
+    auto packet = PacketsBuilder::buildSubscribePacket(packetID, topicName, retainHandling, false,
+                                                       qos, true, &props);
+    packet->computePacketSize();
+    // ASSERT_TRUE(packet->checkImpl());
+
+    uint8_t buffer[2058] = {};
+    uint32_t serializedSize =
+        static_cast<ControlPacketSerializableImpl*>(packet)->serialize(buffer);
+
+    ASSERT_GT(serializedSize, 0);
+    ASSERT_LT(serializedSize, sizeof(buffer));
+
+    SubscribePacket receivedPacket;
+    uint32_t deserializableSize = receivedPacket.deserialize(buffer, serializedSize);
+
+    EXPECT_EQ(deserializableSize, serializedSize);
+    //    ASSERT_TRUE(receivedPacket.checkImpl());
+    EXPECT_EQ(receivedPacket.fixedVariableHeader.packetID, 0);
+    EXPECT_EQ(receivedPacket.payload.topicList[0].topicName, DynamicString("test/topic"));
+    EXPECT_EQ(receivedPacket.payload.topicList[0].QoS, (uint8_t)QoSDelivery::AtLeastOne);
+    EXPECT_EQ(receivedPacket.payload.topicList[0].retainHandling,
+              (uint8_t)RetainHandling::NoRetainedMessage);
+    EXPECT_EQ(receivedPacket.payload.topicList[0].nonLocal, false);
+    EXPECT_EQ(receivedPacket.payload.topicList[0].retainAsPublished, true);
+}
+
+TEST_F(MqttV5PacketsTests, buildandSerializePublishPacket) {
+    const char* topicName = "test/topic";
+    const uint8_t payload[] = {0x01, 0x02, 0x03, 0x04};
+    const QoSDelivery qos = QoSDelivery::AtLeastOne;
+    const bool retain = true;
+    const uint16_t packetID = 1234;
+
+    auto packet = PacketsBuilder::buildPublishPacket(packetID, topicName, payload, sizeof(payload),
+                                                     qos, retain, &props);
+    packet->computePacketSize();
+    ASSERT_TRUE(packet->checkImpl());
+
+    uint8_t buffer[1024] = {};
+    uint32_t serializedSize =
+        static_cast<ControlPacketSerializableImpl*>(packet)->serialize(buffer);
+
+    ASSERT_GT(serializedSize, 0);
+    ASSERT_LT(serializedSize, sizeof(buffer));
+
+    PublishPacket receivedPacket;
+    uint32_t deserializableSize = receivedPacket.deserialize(buffer, serializedSize);
+
+    EXPECT_EQ(deserializableSize, serializedSize);
+    //    ASSERT_TRUE(receivedPacket.checkImpl());
+    EXPECT_EQ(receivedPacket.fixedVariableHeader.topicName, DynamicString("test/topic"));
+    EXPECT_EQ(receivedPacket.header.isRetained(), true);
+    EXPECT_EQ(receivedPacket.header.isDuplicated(), false);
+    EXPECT_EQ(receivedPacket.header.getQoS(), (uint8_t)QoSDelivery::AtLeastOne);
+    EXPECT_EQ(receivedPacket.fixedVariableHeader.packetID, 1234);
+    EXPECT_EQ(receivedPacket.payload.dataSize, sizeof(payload));
+    EXPECT_EQ(receivedPacket.payload.data[0], 0x01);
+    EXPECT_EQ(receivedPacket.payload.data[1], 0x02);
+    EXPECT_EQ(receivedPacket.payload.data[2], 0x03);
+    EXPECT_EQ(receivedPacket.payload.data[3], 0x04);
 }
