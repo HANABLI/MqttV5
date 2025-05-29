@@ -11,11 +11,16 @@ set(Headers
     include/MqttV5/MqttV5Types.hpp
     include/MqttV5/MqttV5Constants.hpp
     include/MqttV5/MqttV5ISerializable.hpp
+    include/MqttV5/MqttV5Core/ClientTransportLayer.hpp
+    include/MqttV5/MqttV5Core/Connection.hpp
+    include/MqttV5/MqttV5Core/MqttClient.hpp
+    include/MqttV5/MqttV5Core/TimeKeeper.hpp
 )
 
 set(Sources
     src/MqttV5Properties.cpp
     src/MqttV5Packets.cpp
+    src/MqttClient.cpp
 )
 
 add_library(${this} STATIC ${Sources} ${Headers})

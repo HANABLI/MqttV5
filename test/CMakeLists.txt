@@ -9,6 +9,7 @@ set(SOURCES
     src/MqttV5PacketsTests.cpp
     src/MqttV5PropertiesTests.cpp
     src/MqttV5TypesTests.cpp
+    src/MqttCircularBufferTests.cpp
 )
 
 add_executable(${this} ${SOURCES} )
