@@ -6,8 +6,7 @@
  * @note This file is part of the MqttV5 library.
  */
 
-#include "MqttV5/MqttV5Packets/MqttV5Packets.hpp"
-#include "MqttV5/MqttV5Constants.hpp"
+#include "MqttV5/MqttV5Packets.hpp"
 
 namespace MqttV5
 {

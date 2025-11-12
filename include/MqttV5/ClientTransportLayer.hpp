@@ -9,7 +9,7 @@
  * © 2025 by Hatem Nabli
  */
 
-#include "Connection.hpp"
+#include "MqttV5/Connection.hpp"
 
 #include <stdint.h>
 #include <functional>

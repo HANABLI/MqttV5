@@ -6,7 +6,7 @@
  * copyright © 2025 by Hatem Nabli
  */
 
-#include "MqttV5/MqttV5Core/MqttClient.hpp"
+#include "MqttV5/MqttClient.hpp"
 #include <gtest/gtest.h>
 
 namespace

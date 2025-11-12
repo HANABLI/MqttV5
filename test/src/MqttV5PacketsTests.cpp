@@ -11,7 +11,7 @@
 #include <MqttV5/MqttV5Constants.hpp>
 #include <MqttV5/MqttV5Types.hpp>
 #include <MqttV5/MqttV5ISerializable.hpp>
-#include <MqttV5/MqttV5Packets/MqttV5Packets.hpp>
+#include <MqttV5/MqttV5Packets.hpp>
 
 using namespace MqttV5;
 using namespace MqttV5::Common;
