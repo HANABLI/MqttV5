@@ -712,6 +712,12 @@ namespace MqttV5
         PropertyCore* getPropertyAt(uint32_t index) const;  //!< Get a property by index
 
         /**
+         * Check if the properties are compatible for the given packet type
+         *
+         */
+        bool checkPropertiesFor(const ControlPacketType type) const;
+
+        /**
          * get the number of properties in the properties class
          * @return whether the other properties class has captured or not.
          */

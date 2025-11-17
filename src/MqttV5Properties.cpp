@@ -7,10 +7,295 @@
  */
 
 #include "MqttV5/MqttV5Properties.hpp"
-#include "MqttV5/MqttV5Types.hpp"
 
 // #include "MqttV5Constants.hpp"
-
+namespace MqttV5
+{
+    /** The allowed properties for each control packet type.
+    This is used externally to allow generic code to be written */
+    template <PropertyId type>
+    struct ExpectedProperty
+    {
+        enum
+        {
+            AllowedMask = 0
+        };
+    };
+    template <>
+    struct ExpectedProperty<PayloadFormatIndicator>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)PUBLISH) | 1
+        };
+    };
+    template <>
+    struct ExpectedProperty<MessageExpiryInterval>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)PUBLISH) | 1
+        };
+    };
+    template <>
+    struct ExpectedProperty<ContentType>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)PUBLISH) | 1
+        };
+    };
+    template <>
+    struct ExpectedProperty<ResponseTopic>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)PUBLISH) | 1
+        };
+    };
+    template <>
+    struct ExpectedProperty<CorrelationData>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)PUBLISH) | 1
+        };
+    };
+    template <>
+    struct ExpectedProperty<TopicAlias>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)PUBLISH)
+        };
+    };
+    template <>
+    struct ExpectedProperty<WillDelayInterval>
+    {
+        enum
+        {
+            AllowedMask = 1
+        };
+    };
+    template <>
+    struct ExpectedProperty<SubscriptionID>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)PUBLISH) | (1 << (uint8_t)SUBSCRIBE)
+        };
+    };
+    template <>
+    struct ExpectedProperty<SessionExpiryInterval>
+    {
+        enum
+        {
+            AllowedMask =
+                (1 << (uint8_t)CONNECT) | (1 << (uint8_t)CONNACK) | (1 << (uint8_t)DISCONNECT)
+        };
+    };
+    template <>
+    struct ExpectedProperty<AuthenticationMethod>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNECT) | (1 << (uint8_t)CONNACK) | (1 << (uint8_t)AUTH)
+        };
+    };
+    template <>
+    struct ExpectedProperty<AuthenticationData>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNECT) | (1 << (uint8_t)CONNACK) | (1 << (uint8_t)AUTH)
+        };
+    };
+    template <>
+    struct ExpectedProperty<ReceiveMax>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNECT) | (1 << (uint8_t)CONNACK)
+        };
+    };
+    template <>
+    struct ExpectedProperty<TopicAliasMax>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNECT) | (1 << (uint8_t)CONNACK)
+        };
+    };
+    template <>
+    struct ExpectedProperty<PacketSizeMax>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNECT) | (1 << (uint8_t)CONNACK)
+        };
+    };
+    template <>
+    struct ExpectedProperty<RequestProblemInfo>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNECT)
+        };
+    };
+    template <>
+    struct ExpectedProperty<RequestResponseInfo>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNECT)
+        };
+    };
+    template <>
+    struct ExpectedProperty<AssignedClientID>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNACK)
+        };
+    };
+    template <>
+    struct ExpectedProperty<ServerKeepAlive>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNACK)
+        };
+    };
+    template <>
+    struct ExpectedProperty<QoSMax>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNACK)
+        };
+    };
+    template <>
+    struct ExpectedProperty<RetainAvailable>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNACK)
+        };
+    };
+    template <>
+    struct ExpectedProperty<WildcardSubAvailable>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNACK)
+        };
+    };
+    template <>
+    struct ExpectedProperty<SubscriptionIDAvailable>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNACK)
+        };
+    };
+    template <>
+    struct ExpectedProperty<SharedSubscriptionAvailable>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNACK)
+        };
+    };
+    template <>
+    struct ExpectedProperty<ResponseInfo>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNACK)
+        };
+    };
+    template <>
+    struct ExpectedProperty<ServerReference>
+    {
+        enum
+        {
+            AllowedMask = (1 << (uint8_t)CONNACK) | (1 << (uint8_t)DISCONNECT)
+        };
+    };
+    template <>
+    struct ExpectedProperty<ReasonString>
+    {
+        enum
+        {
+            AllowedMask =
+                (1 << (uint8_t)CONNACK) | (1 << (uint8_t)PUBACK) | (1 << (uint8_t)PUBREC) |
+                (1 << (uint8_t)PUBREL) | (1 << (uint8_t)PUBCOMP) | (1 << (uint8_t)SUBACK) |
+                (1 << (uint8_t)UNSUBACK) | (1 << (uint8_t)DISCONNECT) | (1 << (uint8_t)AUTH)
+        };
+    };
+    template <>
+    struct ExpectedProperty<UserProperty>
+    {
+        enum
+        {
+            AllowedMask = 0xFFFF
+        };
+    };
+    /** Check if the given property is allowed in the given control packet type in O(1) */
+    static inline bool isAllowedProperty(
+        const PropertyId type,
+        const ControlPacketType
+            ctype) {  // This takes 82 bytes of program memory by allowing O(1) in property
+                      // validity, compared to O(N) search and duplicated code everywhere.
+        static uint16_t allowedProperties[MaxUsedPropertyType] = {
+            ExpectedProperty<(PropertyId)1>::AllowedMask,
+            ExpectedProperty<(PropertyId)2>::AllowedMask,
+            ExpectedProperty<(PropertyId)3>::AllowedMask,
+            ExpectedProperty<(PropertyId)4>::AllowedMask,
+            ExpectedProperty<(PropertyId)5>::AllowedMask,
+            ExpectedProperty<(PropertyId)6>::AllowedMask,
+            ExpectedProperty<(PropertyId)7>::AllowedMask,
+            ExpectedProperty<(PropertyId)8>::AllowedMask,
+            ExpectedProperty<(PropertyId)9>::AllowedMask,
+            ExpectedProperty<(PropertyId)10>::AllowedMask,
+            ExpectedProperty<(PropertyId)11>::AllowedMask,
+            ExpectedProperty<(PropertyId)12>::AllowedMask,
+            ExpectedProperty<(PropertyId)13>::AllowedMask,
+            ExpectedProperty<(PropertyId)14>::AllowedMask,
+            ExpectedProperty<(PropertyId)15>::AllowedMask,
+            ExpectedProperty<(PropertyId)16>::AllowedMask,
+            ExpectedProperty<(PropertyId)17>::AllowedMask,
+            ExpectedProperty<(PropertyId)18>::AllowedMask,
+            ExpectedProperty<(PropertyId)19>::AllowedMask,
+            ExpectedProperty<(PropertyId)20>::AllowedMask,
+            ExpectedProperty<(PropertyId)21>::AllowedMask,
+            ExpectedProperty<(PropertyId)22>::AllowedMask,
+            ExpectedProperty<(PropertyId)23>::AllowedMask,
+            ExpectedProperty<(PropertyId)24>::AllowedMask,
+            ExpectedProperty<(PropertyId)25>::AllowedMask,
+            ExpectedProperty<(PropertyId)26>::AllowedMask,
+            ExpectedProperty<(PropertyId)27>::AllowedMask,
+            ExpectedProperty<(PropertyId)28>::AllowedMask,
+            ExpectedProperty<(PropertyId)29>::AllowedMask,
+            ExpectedProperty<(PropertyId)30>::AllowedMask,
+            ExpectedProperty<(PropertyId)31>::AllowedMask,
+            ExpectedProperty<(PropertyId)32>::AllowedMask,
+            ExpectedProperty<(PropertyId)33>::AllowedMask,
+            ExpectedProperty<(PropertyId)34>::AllowedMask,
+            ExpectedProperty<(PropertyId)35>::AllowedMask,
+            ExpectedProperty<(PropertyId)36>::AllowedMask,
+            ExpectedProperty<(PropertyId)37>::AllowedMask,
+            ExpectedProperty<(PropertyId)38>::AllowedMask,
+            ExpectedProperty<(PropertyId)39>::AllowedMask,
+            ExpectedProperty<(PropertyId)40>::AllowedMask,
+            ExpectedProperty<(PropertyId)41>::AllowedMask,
+            ExpectedProperty<(PropertyId)42>::AllowedMask,
+        };
+        if (!type || type >= MaxUsedPropertyType)
+            return 0;
+        return (allowedProperties[(int)type - 1] & (1 << (uint8_t)ctype)) > 0;
+    }
+}  // namespace MqttV5
 namespace MqttV5
 {
     struct Properties::Impl
@@ -240,4 +525,16 @@ namespace MqttV5
         }
     }  //!< Clear the properties class
 
+    bool Properties::checkPropertiesFor(const ControlPacketType type) const {
+        if (!checkImpl())
+            return false;
+        PropertyCore* u = impl_->head;
+        while (u)
+        {
+            if (!isAllowedProperty((PropertyId)u->id, type))
+                return false;
+            u = u->next;
+        }
+        return true;
+    }
 }  // namespace MqttV5
