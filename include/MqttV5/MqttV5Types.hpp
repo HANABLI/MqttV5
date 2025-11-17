@@ -11,7 +11,7 @@
 #pragma once
 
 #include <stdint.h>
-#include <string.h>
+#include <string_view>
 #include <array>
 #include <vector>
 #include <string>
@@ -220,11 +220,27 @@ namespace MqttV5
             bool checkImpl() const override {
                 return size > 0 && size < 5 && (raw[size - 1] & 0x80) == 0;
             }
+            /** Read the value from a buffer.
+                @param buffer   A pointer to an allocated buffer that's at least 4
+               bytes long
+                @return The number of bytes read from the buffer, or BadData upon
+               error */
+            uint32_t readFrom(const uint8_t* buffer, uint32_t bufLength) {
+                for (size = 0;;)
+                {
+                    if ((uint32_t)(size + 1) > bufLength)
+                        return NotEnoughData;
+                    raw[size] = buffer[size];
+                    if (raw[size++] < 0x80)
+                        break;
+                    if (size == 4)
+                        return BadData;
+                }
+                return size;
+            }
             /**
-             * @brief Checks if the varint is valid.
-             * @return True if the varint is valid, false otherwise.
-             * @note This function checks if the varint is valid by checking the size and the last
-             * byte.
+             * @brief get the size of the varient.
+             * @return the size of the variant is returned.
              */
             uint32_t getSerializedSize() const override { return size; }
 
