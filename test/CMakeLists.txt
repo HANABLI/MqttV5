@@ -5,15 +5,16 @@
 cmake_minimum_required(VERSION 3.8)
 set(this MqttV5Tests)
 
-set(SOURCES 
+set(SOURCES
     src/MqttV5PacketsTests.cpp
     src/MqttV5PropertiesTests.cpp
     src/MqttV5TypesTests.cpp
     src/MqttCircularBufferTests.cpp
+    src/MqttV5ClientTests.cpp
 )
 
 add_executable(${this} ${SOURCES} )
-set_target_properties(${this} PROPERTIES 
+set_target_properties(${this} PROPERTIES
     FOLDER Tests
 )
 
@@ -28,6 +29,6 @@ target_link_libraries(${this}
 )
 
 add_test(
-    NAME ${this} 
+    NAME ${this}
     COMMAND ${this}
 )
