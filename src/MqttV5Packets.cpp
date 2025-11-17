@@ -123,4 +123,14 @@ namespace MqttV5
         return pingPacket;
     }
 
+    ControlPacketSerializable* PacketsBuilder::buildConnAckPacket(const uint8_t reasonCode,
+                                                                  Properties* properties) {
+        ConnAckPacket* connAckPacket = new ConnAckPacket();
+        if (reasonCode)
+        { connAckPacket->fixedVariableHeader.reasonCode = reasonCode; }
+        if (properties != nullptr)
+        { connAckPacket->props.captureProperties(*properties); }
+        return connAckPacket;
+    }
+
 }  // namespace MqttV5

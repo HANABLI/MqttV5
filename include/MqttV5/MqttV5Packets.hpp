@@ -1379,9 +1379,8 @@ namespace MqttV5
             const ReasonCode reasonCode, const uint16_t sessionExpiryInterval,
             const uint8_t serverKeepAlive, const DynamicStringView& uthenticationMethod,
             const DynamicBinaryDataView& authData, Properties* properties = nullptr);
-        static ControlPacketSerializable* buildConAckPacket(const uint8_t sessionPresent,
-                                                            const uint8_t reasonCode,
-                                                            Properties* properties = nullptr);
+        static ControlPacketSerializable* buildConnAckPacket(const uint8_t reasonCode,
+                                                             Properties* properties = nullptr);
         static ControlPacketSerializable* buildSubAckPacket(const uint16_t packetID,
                                                             const uint8_t reasonCode,
                                                             Properties* properties = nullptr);
