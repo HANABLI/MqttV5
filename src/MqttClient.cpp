@@ -249,7 +249,7 @@ namespace MqttV5
         /**
          * The completion delegate function
          */
-        std::function<void(Transaction::State state)> completionDelegate;
+        std::function<void(std::vector<ReasonCode>& reasons)> completionDelegate;
 
         /**
          * This flag indicates whether or not the connection used to
@@ -272,10 +272,12 @@ namespace MqttV5
         /**
          * This is the transaction state
          */
+        std::vector<Storage::ReasonCode> reasons;
         State transactionState;
 
         void AwaitCompletion() override {}
-        void SetCompletionDelegate(std::function<void(Transaction::State state)> cb) override;
+        void SetCompletionDelegate(
+            std::function<void(std::vector<ReasonCode>& reasons)> cb) override;
 
         void MarkComplete(State s);
 
@@ -504,20 +506,20 @@ namespace MqttV5
      *
      */
 
-    void TransactionImpl::SetCompletionDelegate(std::function<void(Transaction::State state)> cb) {
+    void TransactionImpl::SetCompletionDelegate(std::function<void(std::vector<ReasonCode>&)> cb) {
         std::unique_lock<decltype(mutex)> lock(mutex);
         this->completionDelegate = cb;
         const bool wasComplete = complete;
         lock.unlock();
         if (wasComplete)
-        { completionDelegate(transactionState); }
+        { cb(reasons); }
     }
 
     void TransactionImpl::MarkComplete(State s) {
         if (complete)
         { return; }
         bool dropConnection = false;
-        std::function<void(Transaction::State state)> cb;
+        std::function<void(std::vector<ReasonCode>&)> cb;
         {
             std::lock_guard<decltype(mutex)> lock(mutex);
             if (complete)
@@ -527,7 +529,10 @@ namespace MqttV5
             cb = completionDelegate;
         }
         if (cb)
-        { cb(s); }
+        {
+            cb(reasons);
+            reasons.erase(reasons.begin(), reasons.end());
+        }
     }
 
     void TransactionImpl::HandleConnAck(const uint8_t* packetPtr, uint32_t packetSize) {

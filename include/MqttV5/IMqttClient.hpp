@@ -58,7 +58,7 @@ namespace MqttV5
              *      This is the delegate to call once the transaction is completed.
              */
             virtual void SetCompletionDelegate(
-                std::function<void(Transaction::State state)> completionDelegate) = 0;
+                std::function<void(std::vector<ReasonCode>&)> completionDelegate) = 0;
         };
 
         virtual SystemUtils::DiagnosticsSender::UnsubscribeDelegate SubscribeToDiagnostics(
