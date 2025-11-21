@@ -114,7 +114,7 @@ namespace MqttV5
          * @param[in] properties
          *      This is the properties to use for the subscription.
          */
-        virtual std::shared_ptr<Transaction> Subscribe(SubscribeTopic& topics,
+        virtual std::shared_ptr<Transaction> Subscribe(SubscribeTopic* topics,
                                                        Properties* properties) = 0;
         /**
          * This method unsubscribes from the given topics.
@@ -124,7 +124,7 @@ namespace MqttV5
          * @param[in] properties
          *      This is the properties to use for the unsubscription.
          */
-        virtual std::shared_ptr<Transaction> Unsubscribe(SubscribeTopic& topics,
+        virtual std::shared_ptr<Transaction> Unsubscribe(UnsubscribeTopic* topics,
                                                          Properties* properties) = 0;
         /**
          * This method publishes the given payload to the given topic.

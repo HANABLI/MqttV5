@@ -745,13 +745,13 @@ namespace MqttV5
         return transaction;
     }
 
-    auto MqttClient::Subscribe(SubscribeTopic& topics, Properties* properties)
+    auto MqttClient::Subscribe(SubscribeTopic* topics, Properties* properties)
         -> std::shared_ptr<MqttClient::Transaction> {
         const auto transaction = std::make_shared<TransactionImpl>();
         return transaction;
     }
 
-    auto MqttClient::Unsubscribe(SubscribeTopic& topics, Properties* properties)
+    auto MqttClient::Unsubscribe(UnsubscribeTopic* topics, Properties* properties)
         -> std::shared_ptr<MqttClient::Transaction> {
         const auto transaction = std::make_shared<TransactionImpl>();
         return transaction;

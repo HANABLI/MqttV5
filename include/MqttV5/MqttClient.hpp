@@ -394,10 +394,10 @@ namespace MqttV5
             const QoSDelivery maxAcceptedQos = QoSDelivery::ExactlyOne,
             const bool retainAsPublished = true, Properties* properties = nullptr) override;
 
-        std::shared_ptr<Transaction> Subscribe(SubscribeTopic& topics,
+        std::shared_ptr<Transaction> Subscribe(SubscribeTopic* topics,
                                                Properties* properties = nullptr) override;
 
-        std::shared_ptr<Transaction> Unsubscribe(SubscribeTopic& topics,
+        std::shared_ptr<Transaction> Unsubscribe(UnsubscribeTopic* topics,
                                                  Properties* properties = nullptr) override;
 
         std::shared_ptr<Transaction> Publish(const char* topic, const char* payload,
