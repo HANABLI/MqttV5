@@ -714,6 +714,21 @@ namespace MqttV5
         impl_->keepAlive =
             (keepAlive + (keepAlive / 2)) /
             2;  // Make it 75% of what's given so we always wake up before doom's clock
+
+        if (properties != nullptr)
+        {
+            if (!properties->getProperty(PropertyId::PacketSizeMax))
+            {
+                auto packetSizeMax = MaximumPacketSize_prop::create(impl_->maxPacketSize);
+                properties->addProperty(packetSizeMax);
+            }
+            if (!properties->getProperty(PropertyId::ReceiveMax))
+            {
+                auto receiveMax = ReceiveMaximum_prop::create(8UL / 3);
+                properties->addProperty(receiveMax);
+            }
+        }
+
         auto packet = PacketsBuilder::buildConnectPacket(impl_->clientID, userName, password, true,
                                                          impl_->keepAlive, willMessage, willQoS,
                                                          willRetain, properties);

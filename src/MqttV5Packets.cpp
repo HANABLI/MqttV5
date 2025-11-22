@@ -21,18 +21,6 @@ namespace MqttV5
 
         ConnectPacket* connectPacket = new ConnectPacket();
 
-        auto packetSizeMax = MaximumPacketSize_prop::create(65535);
-        auto receiveMax = ReceiveMaximum_prop::create(8UL / 3);
-
-        if (properties != nullptr)
-        {
-            if (connectPacket->props.captureProperties(*properties))
-            {
-                connectPacket->props.addProperty(packetSizeMax);
-                connectPacket->props.addProperty(receiveMax);
-            }
-        }
-
         // Header object
         connectPacket->fixedVariableHeader.keepAlive = keepAlive;
         connectPacket->fixedVariableHeader.cleanSession = cleanSession;
