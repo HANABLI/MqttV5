@@ -535,6 +535,12 @@ namespace MqttV5
         }
     }
 
+            if (impl && impl->cb && connectionState->broken)
+            { (void)impl->cb->onConnectionLost(State::NetworkError); }
+        }
+            if (impl && impl->cb && connectionState->broken)
+            { (void)impl->cb->onConnectionLost(State::NetworkError); }
+        }
     void TransactionImpl::HandleConnAck(const uint8_t* packetPtr, uint32_t packetSize) {
         MqttV5::ConnAckPacket receivedAck;
         uint32_t desSize = receivedAck.deserialize(packetPtr, packetSize);
@@ -560,11 +566,8 @@ namespace MqttV5
         } else
         {
             MarkComplete(State::NetworkError);
-            if (impl && impl->cb)
-            {
-                auto r = static_cast<Storage::ReasonCode>(rc);
-                impl->cb->onConnectionLost(r);
-            }
+            if (impl && impl->cb && connectionState->broken)
+            { (void)impl->cb->onConnectionLost(State::NetworkError); }
         }
     }
 

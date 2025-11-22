@@ -229,7 +229,8 @@ namespace
                 std::string(reinterpret_cast<const char*>(payload.data), payload.size));
         }
 
-        bool onConnectionLost(const Storage::ReasonCode& /*reason*/) override {
+        bool onConnectionLost(
+            const MqttV5::IMqttV5Client::Transaction::State& state /*reason*/) override {
             ++lost;
             return true;
         }
