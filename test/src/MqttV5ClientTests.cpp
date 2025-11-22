@@ -12,6 +12,7 @@
 #include <memory>
 #include <future>
 #include <string>
+#include <array>
 #include <vector>
 #include <cstdint>
 #include <cassert>
@@ -106,9 +107,11 @@ namespace
 
         void SimulateBroken(bool clean = false) { Break(clean); }
 
-        const std::vector<uint8_t>& LastOutgoing() const {
+        const std::vector<uint8_t> LastOutgoing() {
             assert(!outgoing.empty());
-            return outgoing.back();
+            const auto back = outgoing.back();
+            outgoing.pop_back();
+            return back;
         }
     };
 
@@ -324,6 +327,7 @@ protected:
     void TearDown() override {
         // Clean up any resources allocated during the tests
         client->Demobilize();
+
         diagnosticUnsubscribeDelegate();
 
         props.clear();
@@ -335,8 +339,20 @@ protected:
 Properties MqttV5ClientTests::props;
 
 TEST_F(MqttV5ClientTests, SimpleConnectThenConnAckOk_Test) {
+    std::string clientId = "client";
+    std::string userName = "user";
+    std::string string_pass = "pass";
+    std::string willPayload = "online";
+    auto encodedPass = utf.Encode(Utf8::AsciiToUnicode(string_pass));
+    DynamicBinaryData password(encodedPass.data(), static_cast<uint32_t>(encodedPass.size()));
+    auto encodedWill = utf.Encode(Utf8::AsciiToUnicode(willPayload));
+    DynamicBinaryData will(encodedWill.data(), static_cast<uint32_t>(encodedWill.size()));
+
+    WillMessage willMsg;
+    willMsg.topicName = "will/topic";
+    willMsg.payload = will;
     auto transaction = client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr,
-                                         nullptr, MqttV5::QoSDelivery::AtLeastOne, false, &props);
+                                         &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
     ASSERT_NE(conn(), nullptr) << "Trasport Layer don't create the connection object";
 
     const auto& connection = conn();
