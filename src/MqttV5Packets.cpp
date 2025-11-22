@@ -39,7 +39,7 @@ namespace MqttV5
             connectPacket->payload.userName = username;
         if (password != nullptr)
             connectPacket->payload.password = *password;
-
+        connectPacket->computePacketSize(true);
         return connectPacket;
     }
 
@@ -60,7 +60,7 @@ namespace MqttV5
         publishPacket->fixedVariableHeader.topicName = topicName;
         publishPacket->payload.setExpectedPacketSize(payloadSize);
         publishPacket->payload.deserialize(payload, payloadSize);
-
+        publishPacket->computePacketSize(true);
         return publishPacket;
     }
 
@@ -86,7 +86,7 @@ namespace MqttV5
 
         subscribePacket->fixedVariableHeader.packetID = packetID;
         subscribePacket->payload.topicList = topicList;
-
+        subscribePacket->computePacketSize(true);
         return subscribePacket;
     }
 
@@ -118,6 +118,7 @@ namespace MqttV5
         { connAckPacket->fixedVariableHeader.reasonCode = reasonCode; }
         if (properties != nullptr)
         { connAckPacket->props.captureProperties(*properties); }
+        connAckPacket->computePacketSize(true);
         return connAckPacket;
     }
 

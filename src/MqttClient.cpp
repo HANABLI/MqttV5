@@ -740,7 +740,9 @@ namespace MqttV5
         //             0, "Check properties for Connection: State %d",
         //             Transaction::State::BadProperties);
         // }
-        uint8_t encodedConnect[1024] = {};
+
+        auto size = packet->computePacketSize(true);
+        uint8_t* encodedConnect = new uint8_t[(size_t)size];
         auto packetSize = packet->serialize(encodedConnect);
         std::vector<uint8_t> data(encodedConnect, encodedConnect + packetSize);
         transaction->connectionState = connectionState;

@@ -80,7 +80,7 @@ TEST_F(MqttV5PacketsTests, buildandSerializeConnectPacket) {
 
     auto packet = PacketsBuilder::buildConnectPacket(
         clientId, userName, &password, true, 60, &willMsg, QoSDelivery::AtLeastOne, true, &props);
-    packet->computePacketSize();
+    // packet->computePacketSize();
     ASSERT_TRUE(packet->checkImpl());
 
     uint8_t buffer[1024] = {};
@@ -147,8 +147,8 @@ TEST_F(MqttV5PacketsTests, buildSubscribePacket) {
 
     auto packet = PacketsBuilder::buildSubscribePacket(packetID, topicName, retainHandling, false,
                                                        qos, true, &props);
-    packet->computePacketSize();
-    // ASSERT_TRUE(packet->checkImpl());
+    // packet->computePacketSize();
+    ASSERT_TRUE(packet->checkImpl());
 
     uint8_t buffer[2058] = {};
     uint32_t serializedSize =
@@ -180,7 +180,7 @@ TEST_F(MqttV5PacketsTests, buildandSerializePublishPacket) {
 
     auto packet = PacketsBuilder::buildPublishPacket(packetID, topicName, payload, sizeof(payload),
                                                      qos, retain, &props);
-    packet->computePacketSize();
+    // packet->computePacketSize();
     ASSERT_TRUE(packet->checkImpl());
 
     uint8_t buffer[1024] = {};
