@@ -17,7 +17,7 @@ namespace MqttV5
     public:
         struct Transaction
         {
-            enum class State
+            enum class State : int
             {
                 Success = 0,            //!< The method succeeded as expected
                 TimedOut = -2,          //!< The operation timed out
@@ -43,6 +43,10 @@ namespace MqttV5
              */
             State transactionState = State::NotConnected;
 
+            /**
+             * This indicate the packetID handled by the transaction
+             */
+            uint16_t packetID;
             /**
              * This method is used to wait for the transaction to complete.
              *

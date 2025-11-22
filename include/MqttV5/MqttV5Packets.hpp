@@ -1387,6 +1387,9 @@ namespace MqttV5
         static ControlPacketSerializable* buildUnsubAckPacket(const uint16_t packetID,
                                                               const uint8_t reasonCode,
                                                               Properties* properties = nullptr);
+        static ControlPacketSerializable* buildSubAckPacketMultiTopics(
+            const uint16_t packetId, const std::vector<uint8_t> reasonsCode,
+            Properties* properties);
         static ControlPacketSerializable* buildPubAckPacket(const uint16_t packetID,
                                                             const uint8_t reasonCode,
                                                             Properties* properties = nullptr);
