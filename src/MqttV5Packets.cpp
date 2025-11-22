@@ -50,7 +50,7 @@ namespace MqttV5
         // Implementation of the buildPublishPacket function
         PublishPacket* publishPacket = new PublishPacket();
 
-        if (properties != nullptr)
+        if (properties)
         { publishPacket->props.captureProperties(*properties); }
 
         publishPacket->header.setRetained(retain);
@@ -81,7 +81,7 @@ namespace MqttV5
         // Implementation of the buildSubscribePacket function
         SubscribePacket* subscribePacket = new SubscribePacket();
 
-        if (properties != nullptr)
+        if (properties)
         { subscribePacket->props.captureProperties(*properties); }
 
         subscribePacket->fixedVariableHeader.packetID = packetID;
@@ -96,7 +96,7 @@ namespace MqttV5
         // Implementation of the buildUnsubscribePacket function
         UnsubscribePacket* unsubscribePacket = new UnsubscribePacket();
 
-        if (properties != nullptr)
+        if (properties)
         { unsubscribePacket->props.captureProperties(*properties); }
 
         unsubscribePacket->payload.topicList = topicList;
@@ -116,7 +116,7 @@ namespace MqttV5
         ConnAckPacket* connAckPacket = new ConnAckPacket();
         if (reasonCode)
         { connAckPacket->fixedVariableHeader.reasonCode = reasonCode; }
-        if (properties != nullptr)
+        if (properties)
         { connAckPacket->props.captureProperties(*properties); }
         connAckPacket->computePacketSize(true);
         return connAckPacket;

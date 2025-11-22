@@ -1008,7 +1008,7 @@ namespace MqttV5
             SubscribeTopicCore::append(newTopic);  //!< Append the new topic to the list
         }                                          //!< Append the new topic to the list
 
-        UnsubscribeTopic(DynamicString& topic) : SubscribeTopicCore(topic) {}
+        UnsubscribeTopic(const DynamicString& topic) : SubscribeTopicCore(topic) {}
         UnsubscribeTopic() : SubscribeTopicCore() {}
     };
 
@@ -1206,7 +1206,7 @@ namespace MqttV5
             buffer[0] = header.typeandFlags;
 
             uint32_t offset = 1;
-            offset += remainingLength.serialize(buffer + 1);
+            offset += remainingLength.serialize(buffer + offset);
             offset +=
                 fixedVariableHeader.serialize(buffer + offset);  // Serialize the variable header
             offset += props.serialize(buffer + offset);          // Serialize the properties
@@ -1253,15 +1253,15 @@ namespace MqttV5
     };
 
     template <ControlPacketType type>
-    struct ControlPacket : public ControlPacketSerializableImpl
+    struct ControlPacket final : public ControlPacketSerializableImpl
     {
         typename ControlPacketCore<type>::FixedHeader header;
-        typename FixedField<type> fixedVariableHeader;
-        typename VHPropertyChooser<type>::VHProperty properties;
+        FixedField<type> fixedVariableHeader;
+        typename VHPropertyChooser<type>::VHProperty props;
         typename PayloadSelector<type>::PayloadType payload;
 
         ControlPacket() :
-            ControlPacketSerializableImpl(header, fixedVariableHeader, properties, payload) {
+            ControlPacketSerializableImpl(header, fixedVariableHeader, props, payload) {
             payload.setFlags(fixedVariableHeader);
             fixedVariableHeader.setFlags(header.typeandFlags);
         }  //!< Default constructor for the ControlPacket class
@@ -1271,11 +1271,11 @@ namespace MqttV5
     {
         FixedHeaderBase header;
         FixedField<PUBACK> fixedVariableHeader;
-        typename VHPropertyChooser<PUBACK>::VHProperty properties;
+        typename VHPropertyChooser<PUBACK>::VHProperty props;
         SerializablePayload payload;
 
         PublishReplayPacket() :
-            ControlPacketSerializableImpl(header, fixedVariableHeader, properties, payload) {
+            ControlPacketSerializableImpl(header, fixedVariableHeader, props, payload) {
         }  //!< Default constructor for the PublishReplayPacket class
         PublishReplayPacket(FixedHeaderBase& header, FixedFieldGeneric& fixedVariableHeader,
                             Properties& properties, SerializablePayload& payload) :
