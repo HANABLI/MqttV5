@@ -584,15 +584,15 @@ namespace MqttV5
             if (available < 2)
                 break;
             ControlPacketType type;
-            FixedHeader header;
-            header.raw = rxBuf[offset];
-            type = (ControlPacketType)(uint8_t)header.type;
+            FixedHeaderBase header;
+            header.typeandFlags = rxBuf[offset];
+            type = (ControlPacketType)(uint8_t)header.getType();
             Mqtt_V5::VBInt len;
-            uint32_t r = len.readFrom(rxBuf.data() + 4, (uint32_t)available - 4);
+            uint32_t r = len.readFrom(rxBuf.data() + 1, (uint32_t)available - 1);
             if (r == MqttV5::Mqtt_V5::BadData || r == Mqtt_V5::NotEnoughData)
                 break;
             uint32_t remainingLength = len;
-            uint32_t totalPacketSize = remainingLength + len.getSerializedSize() + 4;
+            uint32_t totalPacketSize = remainingLength + len.getSerializedSize() + 1;
             if (available < totalPacketSize)
             { break; }
 
