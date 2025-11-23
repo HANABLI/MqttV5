@@ -206,3 +206,13 @@ TEST_F(MqttV5PacketsTests, buildandSerializePublishPacket) {
     EXPECT_EQ(receivedPacket.payload.data[2], 0x03);
     EXPECT_EQ(receivedPacket.payload.data[3], 0x04);
 }
+
+TEST_F(MqttV5PacketsTests, buildSubAckPacket_Test) {
+    auto* pkt = PacketsBuilder::buildSubAckPacket(0x1234, 0x01);
+    uint8_t buf[256] = {};
+    uint32_t size = pkt->serialize(buf);
+
+    SubAckPacket packet;
+    uint32_t deserializableSize = packet.deserialize(buf, size);
+    EXPECT_EQ(0x01, *packet.payload.data);
+}

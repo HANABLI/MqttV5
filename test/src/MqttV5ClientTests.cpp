@@ -338,7 +338,7 @@ protected:
 
 Properties MqttV5ClientTests::props;
 
-TEST_F(MqttV5ClientTests, SimpleConnectThenConnAckOk_Test) {
+TEST_F(MqttV5ClientTests, SimpleConnectThenConnAckOk_test) {
     std::string clientId = "client";
     std::string userName = "user";
     std::string string_pass = "pass";
@@ -383,4 +383,300 @@ TEST_F(MqttV5ClientTests, SimpleConnectThenConnAckOk_Test) {
     EXPECT_EQ(MqttClient::Transaction::State::Success, transaction->transactionState);
 }
 
+TEST_F(MqttV5ClientTests, SubscribeSingleTopicSendsPacket_test) {
+    std::string clientId = "client";
+    std::string userName = "user";
+    std::string string_pass = "pass";
+    std::string willPayload = "online";
+    auto encodedPass = utf.Encode(Utf8::AsciiToUnicode(string_pass));
+    DynamicBinaryData password(encodedPass.data(), static_cast<uint32_t>(encodedPass.size()));
+    auto encodedWill = utf.Encode(Utf8::AsciiToUnicode(willPayload));
+    DynamicBinaryData will(encodedWill.data(), static_cast<uint32_t>(encodedWill.size()));
+
+    WillMessage willMsg;
+    willMsg.topicName = "will/topic";
+    willMsg.payload = will;
+
+    auto transaction = client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr,
+                                         &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
+    const auto& connection = conn();
+    // std::weak_ptr<MqttClient::Transaction> weakTransaction = transaction;
+    ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, transaction->transactionState);
+    ASSERT_FALSE(connection->outgoing.empty());
+    const auto connAkt = connection->LastOutgoing();
+    ConnectPacket packet;
+    auto desSize = packet.deserialize(connAkt.data(), (uint32_t)connAkt.size());
+    ASSERT_EQ(ControlPacketType::CONNECT, packet.header.getType());
+
+    auto connAckPack = PacketsBuilder::buildConnAckPacket(ReasonCode::Success, &props);
+    uint8_t buffer[256] = {};
+    auto packetSize = connAckPack->serialize(buffer);
+    std::vector<uint8_t> data(buffer, buffer + packetSize);
+
+    std::promise<void> transactionCompleted;
+    transaction->SetCompletionDelegate(
+        [&transactionCompleted](std::vector<Storage::ReasonCode>& reasons)
+        {
+            transactionCompleted.set_value();
+            for (const Storage::ReasonCode& i : reasons)
+            { EXPECT_EQ(Storage::ReasonCode::Success, i); }
+        });
+    connection->SimulateIncoming({data.begin(), data.end()});
+
+    auto transactionWasCompleted = transactionCompleted.get_future();
+    ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
+
+    EXPECT_EQ(MqttClient::Transaction::State::Success, transaction->transactionState);
+
+    auto subTransaction = client->Subscribe("sensors/+/temp", RetainHandling::NoRetainedMessage,
+                                            false, MqttV5::QoSDelivery::AtLeastOne, true, &props);
+
+    ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, subTransaction->transactionState);
+    ASSERT_FALSE(connection->outgoing.empty());
+    const auto subPkt = connection->LastOutgoing();
+    SubscribePacket subpack;
+    (void)subpack.deserialize(subPkt.data(), (uint32_t)subPkt.size());
+    ASSERT_EQ(MqttV5::ControlPacketType::SUBSCRIBE, subpack.header.getType());
+    ASSERT_EQ(subTransaction->packetID, subpack.fixedVariableHeader.packetID);
+}
+
+TEST_F(MqttV5ClientTests, SubscribeSubAckSuccessGarantedQos1_test) {
+    std::string clientId = "client";
+    std::string userName = "user";
+    std::string string_pass = "pass";
+    std::string willPayload = "online";
+    auto encodedPass = utf.Encode(Utf8::AsciiToUnicode(string_pass));
+    DynamicBinaryData password(encodedPass.data(), static_cast<uint32_t>(encodedPass.size()));
+    auto encodedWill = utf.Encode(Utf8::AsciiToUnicode(willPayload));
+    DynamicBinaryData will(encodedWill.data(), static_cast<uint32_t>(encodedWill.size()));
+
+    WillMessage willMsg;
+    willMsg.topicName = "will/topic";
+    willMsg.payload = will;
+
+    auto transaction = client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr,
+                                         &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
+    const auto& connection = conn();
+    ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, transaction->transactionState);
+    auto connAckPack = PacketsBuilder::buildConnAckPacket(ReasonCode::Success, &props);
+    uint8_t buffer[256] = {};
+    auto packetSize = connAckPack->serialize(buffer);
+    std::vector<uint8_t> data(buffer, buffer + packetSize);
+
+    std::promise<void> transactionCompleted;
+    transaction->SetCompletionDelegate(
+        [&transactionCompleted](std::vector<Storage::ReasonCode>& reasons)
+        {
+            transactionCompleted.set_value();
+            for (const Storage::ReasonCode& i : reasons)
+            { EXPECT_EQ(Storage::ReasonCode::Success, i); }
+        });
+
+    connection->SimulateIncoming({data.begin(), data.end()});
+
+    auto transactionWasCompleted = transactionCompleted.get_future();
+    ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
+    EXPECT_EQ(MqttClient::Transaction::State::Success, transaction->transactionState);
+
+    auto subTransaction = client->Subscribe("sensors/+/temp", RetainHandling::NoRetainedMessage,
+                                            false, MqttV5::QoSDelivery::AtLeastOne, true, &props);
+    ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, subTransaction->transactionState);
+
+    auto subAckPack = PacketsBuilder::buildSubAckPacket(1, ReasonCode::GrantedQoS1, &props);
+    uint8_t subAckBuffer[256] = {};
+    auto subPackSize = subAckPack->serialize(subAckBuffer);
+    std::vector<uint8_t> subAckIncomData(subAckBuffer, subAckBuffer + subPackSize);
+    std::promise<void> subAcktransactionCompleted;
+    subTransaction->SetCompletionDelegate(
+        [&subAcktransactionCompleted](std::vector<Storage::ReasonCode>& reasons)
+        {
+            subAcktransactionCompleted.set_value();
+            for (const Storage::ReasonCode& i : reasons)
+            { EXPECT_EQ(Storage::ReasonCode::GrantedQoS1, i); }
+        });
+
+    connection->SimulateIncoming({subAckIncomData.begin(), subAckIncomData.end()});
+
+    transactionWasCompleted = subAcktransactionCompleted.get_future();
+    ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
+    EXPECT_EQ(MqttClient::Transaction::State::Success, subTransaction->transactionState);
+}
+
+TEST_F(MqttV5ClientTests, SubscribeSubAckFailureNotAuthorized_test) {
+    std::string clientId = "client";
+    std::string userName = "user";
+    std::string string_pass = "pass";
+    std::string willPayload = "online";
+    auto encodedPass = utf.Encode(Utf8::AsciiToUnicode(string_pass));
+    DynamicBinaryData password(encodedPass.data(), static_cast<uint32_t>(encodedPass.size()));
+    auto encodedWill = utf.Encode(Utf8::AsciiToUnicode(willPayload));
+    DynamicBinaryData will(encodedWill.data(), static_cast<uint32_t>(encodedWill.size()));
+
+    WillMessage willMsg;
+    willMsg.topicName = "will/topic";
+    willMsg.payload = will;
+
+    auto transaction = client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr,
+                                         &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
+    const auto& connection = conn();
+    ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, transaction->transactionState);
+    auto connAckPack = PacketsBuilder::buildConnAckPacket(ReasonCode::Success, &props);
+    uint8_t buffer[256] = {};
+    auto packetSize = connAckPack->serialize(buffer);
+    std::vector<uint8_t> data(buffer, buffer + packetSize);
+
+    std::promise<void> transactionCompleted;
+    transaction->SetCompletionDelegate(
+        [&transactionCompleted](std::vector<Storage::ReasonCode>& reasons)
+        {
+            transactionCompleted.set_value();
+            for (const Storage::ReasonCode& i : reasons)
+            { EXPECT_EQ(Storage::ReasonCode::Success, i); }
+        });
+
+    connection->SimulateIncoming({data.begin(), data.end()});
+
+    auto transactionWasCompleted = transactionCompleted.get_future();
+    ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
+    EXPECT_EQ(MqttClient::Transaction::State::Success, transaction->transactionState);
+
+    auto subTransaction = client->Subscribe("sensors/+/temp", RetainHandling::NoRetainedMessage,
+                                            false, MqttV5::QoSDelivery::AtLeastOne, true, &props);
+    ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, subTransaction->transactionState);
+
+    auto subAckPack = PacketsBuilder::buildSubAckPacket(1, ReasonCode::NotAuthorized, &props);
+    uint8_t subAckBuffer[256] = {};
+    auto subPackSize = subAckPack->serialize(subAckBuffer);
+    std::vector<uint8_t> subAckIncomData(subAckBuffer, subAckBuffer + subPackSize);
+    std::promise<void> subAcktransactionCompleted;
+    subTransaction->SetCompletionDelegate(
+        [&subAcktransactionCompleted](std::vector<Storage::ReasonCode>& reasons)
+        {
+            subAcktransactionCompleted.set_value();
+            for (const Storage::ReasonCode& i : reasons)
+            { EXPECT_EQ(Storage::ReasonCode::NotAuthorized, i); }
+        });
+
+    connection->SimulateIncoming({subAckIncomData.begin(), subAckIncomData.end()});
+
+    transactionWasCompleted = subAcktransactionCompleted.get_future();
+    ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
+    EXPECT_EQ(MqttClient::Transaction::State::NetworkError, subTransaction->transactionState);
+}
+
+TEST_F(MqttV5ClientTests, SubscribeMultiTopicsList_test) {
+    std::string clientId = "client";
+    std::string userName = "user";
+    std::string string_pass = "pass";
+    std::string willPayload = "online";
+    auto encodedPass = utf.Encode(Utf8::AsciiToUnicode(string_pass));
+    DynamicBinaryData password(encodedPass.data(), static_cast<uint32_t>(encodedPass.size()));
+    auto encodedWill = utf.Encode(Utf8::AsciiToUnicode(willPayload));
+    DynamicBinaryData will(encodedWill.data(), static_cast<uint32_t>(encodedWill.size()));
+
+    WillMessage willMsg;
+    willMsg.topicName = "will/topic";
+    willMsg.payload = will;
+
+    auto transaction = client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr,
+                                         &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
+    const auto& connection = conn();
+    ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, transaction->transactionState);
+    auto connAckPack = PacketsBuilder::buildConnAckPacket(ReasonCode::Success, &props);
+    uint8_t buffer[256] = {};
+    auto packetSize = connAckPack->serialize(buffer);
+    std::vector<uint8_t> data(buffer, buffer + packetSize);
+
+    std::promise<void> transactionCompleted;
+    transaction->SetCompletionDelegate(
+        [&transactionCompleted](std::vector<Storage::ReasonCode>& reasons)
+        {
+            transactionCompleted.set_value();
+            for (const Storage::ReasonCode& i : reasons)
+            { EXPECT_EQ(Storage::ReasonCode::Success, i); }
+        });
+
+    connection->SimulateIncoming({data.begin(), data.end()});
+
+    auto transactionWasCompleted = transactionCompleted.get_future();
+    ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
+    EXPECT_EQ(MqttClient::Transaction::State::Success, transaction->transactionState);
+
+    auto topic1 = new SubscribeTopic("sensors/+/temp", RetainHandling::NoRetainedMessage, false,
+                                     true, MqttV5::QoSDelivery::AtLeastOne);
+    auto topic2 = new SubscribeTopic("sensors/+/humidity", RetainHandling::NoRetainedMessage, false,
+                                     true, MqttV5::QoSDelivery::AtLeastOne);
+
+    topic1->append(topic2);
+    auto multiSubTransactions = client->Subscribe(topic1, &props);
+
+    ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult,
+              multiSubTransactions->transactionState);
+    const std::vector<uint8_t> reasons = {ReasonCode::GrantedQoS1, ReasonCode::GrantedQoS1};
+    auto subAckPack = PacketsBuilder::buildSubAckPacketMultiTopics(1, reasons, &props);
+    uint8_t subAckBuffer[256] = {};
+    auto subPackSize = subAckPack->serialize(subAckBuffer);
+    std::vector<uint8_t> subAckIncomData(subAckBuffer, subAckBuffer + subPackSize);
+    std::promise<void> subAcktransactionCompleted;
+    multiSubTransactions->SetCompletionDelegate(
+        [&subAcktransactionCompleted](std::vector<Storage::ReasonCode>& reasons)
+        {
+            subAcktransactionCompleted.set_value();
+            for (const Storage::ReasonCode& i : reasons)
+            { EXPECT_EQ(Storage::ReasonCode::GrantedQoS1, i); }
+        });
+
+    connection->SimulateIncoming({subAckIncomData.begin(), subAckIncomData.end()});
+
+    transactionWasCompleted = subAcktransactionCompleted.get_future();
+    ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
+    EXPECT_EQ(MqttClient::Transaction::State::Success, multiSubTransactions->transactionState);
+}
+
+TEST_F(MqttV5ClientTests, UnsubscribeThenUnsubAck_test) {
+    std::string clientId = "client";
+    std::string userName = "user";
+    std::string string_pass = "pass";
+    std::string willPayload = "online";
+    auto encodedPass = utf.Encode(Utf8::AsciiToUnicode(string_pass));
+    DynamicBinaryData password(encodedPass.data(), static_cast<uint32_t>(encodedPass.size()));
+    auto encodedWill = utf.Encode(Utf8::AsciiToUnicode(willPayload));
+    DynamicBinaryData will(encodedWill.data(), static_cast<uint32_t>(encodedWill.size()));
+
+    WillMessage willMsg;
+    willMsg.topicName = "will/topic";
+    willMsg.payload = will;
+    auto transaction = client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr,
+                                         &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
+    const auto& connection = conn();
+    auto topic1 = new UnsubscribeTopic("sensors/+/temp");
+    auto unsubscribeTransaction = client->Unsubscribe(topic1, &props);
+    ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult,
+              unsubscribeTransaction->transactionState);
+    auto unsubscribePacket =
+        MqttV5::PacketsBuilder::buildUnsubAckPacket(1, {ReasonCode::Success}, &props);
+    auto unsubPacketSize = unsubscribePacket->computePacketSize(true);
+    auto subAckBuffer = new uint8_t[(size_t)unsubPacketSize];
+    auto subPackSize = unsubscribePacket->serialize(subAckBuffer);
+    std::vector<uint8_t> subAckIncomData(subAckBuffer, subAckBuffer + subPackSize);
+    delete[] subAckBuffer;
+    std::promise<void> unSubAcktransactionCompleted;
+    unsubscribeTransaction->SetCompletionDelegate(
+        [&unSubAcktransactionCompleted](std::vector<Storage::ReasonCode>& reasons)
+        {
+            unSubAcktransactionCompleted.set_value();
+            for (const Storage::ReasonCode& i : reasons)
+            { EXPECT_EQ(Storage::ReasonCode::Success, i); }
+        });
+
+    connection->SimulateIncoming({subAckIncomData.begin(), subAckIncomData.end()});
+
+    auto transactionWasCompleted = unSubAcktransactionCompleted.get_future();
+    ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
+    EXPECT_EQ(MqttClient::Transaction::State::Success, unsubscribeTransaction->transactionState);
 }
