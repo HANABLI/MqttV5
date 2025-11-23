@@ -573,21 +573,22 @@ namespace MqttV5
     }
 
     void TransactionImpl::HandleConnAck(const uint8_t* packetPtr, uint32_t packetSize) {
-        MqttV5::ConnAckPacket receivedAck;
+        ConnAckPacket receivedAck;
         uint32_t desSize = receivedAck.deserialize(packetPtr, packetSize);
         if (!receivedAck.checkImpl() || (desSize != packetSize))
         {
             MarkComplete(State::ShunkedPacket);
             return;
         }
-        // if (!receivedAck.props.checkPropertiesFor(ControlPacketType::CONNACK))
-        // {
-        //     MarkComplete(State::BadProperties);
-        //     return;
-        // }
         auto impl = impl_.lock();
-        auto rc = receivedAck.fixedVariableHeader.reasonCode;
-        if (rc == Storage::ReasonCode::Success)
+        if (impl->options.avoidValidation)
+        {
+            if (!receivedAck.props.checkPropertiesFor(ControlPacketType::CONNACK))
+            { MarkComplete(State::BadProperties); }
+        }
+        reasons.push_back((ReasonCode)receivedAck.fixedVariableHeader.reasonCode);
+
+        if (reasons.back() == Storage::ReasonCode::Success)
         {
             if (connectionState && impl)
             {
@@ -736,12 +737,15 @@ namespace MqttV5
         const auto transaction = std::make_shared<TransactionImpl>();
 
         const std::string scheme = useTLS ? "mqtts" : "mqtt";
+        impl_->state = MqttClient::ClientState::Connecting;
         auto connectionState = impl_->CreateConnection(transaction, scheme, brokerHost, port);
         if (connectionState->broken)
         {
             impl_->diagnosticSender.SendDiagnosticInformationFormatted(
                 0, "Connection: State %d", Transaction::State::NetworkError);
-        }
+        } else
+        { impl_->connectionState = connectionState; }
+        // TODO Deal with time managment
         impl_->keepAlive =
             (keepAlive + (keepAlive / 2)) /
             2;  // Make it 75% of what's given so we always wake up before doom's clock
@@ -776,12 +780,17 @@ namespace MqttV5
         uint8_t* encodedConnect = new uint8_t[(size_t)size];
         auto packetSize = packet->serialize(encodedConnect);
         std::vector<uint8_t> data(encodedConnect, encodedConnect + packetSize);
+        delete[] encodedConnect;
         transaction->connectionState = connectionState;
         transaction->impl_ = impl_;
         connectionState->connection->SendData(data);
 
         transaction->persistConnection = true;
-        transaction->transactionState = Transaction::State::WaitingForResult;
+        if (connectionState->broken == false)
+        {
+            transaction->transactionState = Transaction::State::WaitingForResult;
+        } else
+        { transaction->transactionState = Transaction::State::NetworkError; }
         connectionState->currentTransaction = transaction;
         return transaction;
     }

@@ -356,6 +356,12 @@ TEST_F(MqttV5ClientTests, SimpleConnectThenConnAckOk_Test) {
     ASSERT_NE(conn(), nullptr) << "Trasport Layer don't create the connection object";
 
     const auto& connection = conn();
+    ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, transaction->transactionState);
+    ASSERT_FALSE(connection->outgoing.empty());
+    const auto connAkt = connection->LastOutgoing();
+    ConnectPacket packet;
+    auto desSize = packet.deserialize(connAkt.data(), (uint32_t)connAkt.size());
+    ASSERT_EQ(ControlPacketType::CONNECT, packet.header.getType());
 
     auto connAckPack = PacketsBuilder::buildConnAckPacket(ReasonCode::Success, &props);
     uint8_t buffer[256] = {};
@@ -363,17 +369,18 @@ TEST_F(MqttV5ClientTests, SimpleConnectThenConnAckOk_Test) {
     std::vector<uint8_t> data(buffer, buffer + packetSize);
 
     std::promise<void> transactionCompleted;
-    MqttClient::Transaction::State responseState;
     transaction->SetCompletionDelegate(
-        [&transactionCompleted, &responseState](MqttClient::Transaction::State state)
+        [&transactionCompleted](std::vector<Storage::ReasonCode>& reasons)
         {
             transactionCompleted.set_value();
-            responseState = state;
+            for (const Storage::ReasonCode& i : reasons)
+            { EXPECT_EQ(Storage::ReasonCode::Success, i); }
         });
-    connection->dataReceivedDelegate({data.begin(), data.end()});
+    connection->SimulateIncoming({data.begin(), data.end()});
 
     auto transactionWasCompleted = transactionCompleted.get_future();
     ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
+    EXPECT_EQ(MqttClient::Transaction::State::Success, transaction->transactionState);
+}
 
-    EXPECT_EQ(MqttClient::Transaction::State::Success, responseState);
 }
