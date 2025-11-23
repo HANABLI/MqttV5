@@ -17,7 +17,7 @@ namespace MqttV5
     public:
         struct Transaction
         {
-            enum class State
+            enum class State : int
             {
                 Success = 0,            //!< The method succeeded as expected
                 TimedOut = -2,          //!< The operation timed out
@@ -44,6 +44,10 @@ namespace MqttV5
             State transactionState = State::NotConnected;
 
             /**
+             * This indicate the packetID handled by the transaction
+             */
+            uint16_t packetID;
+            /**
              * This method is used to wait for the transaction to complete.
              *
              * @note
@@ -58,7 +62,7 @@ namespace MqttV5
              *      This is the delegate to call once the transaction is completed.
              */
             virtual void SetCompletionDelegate(
-                std::function<void(Transaction::State state)> completionDelegate) = 0;
+                std::function<void(std::vector<ReasonCode>&)> completionDelegate) = 0;
         };
 
         virtual SystemUtils::DiagnosticsSender::UnsubscribeDelegate SubscribeToDiagnostics(
@@ -114,7 +118,7 @@ namespace MqttV5
          * @param[in] properties
          *      This is the properties to use for the subscription.
          */
-        virtual std::shared_ptr<Transaction> Subscribe(SubscribeTopic& topics,
+        virtual std::shared_ptr<Transaction> Subscribe(SubscribeTopic* topics,
                                                        Properties* properties) = 0;
         /**
          * This method unsubscribes from the given topics.
@@ -124,7 +128,7 @@ namespace MqttV5
          * @param[in] properties
          *      This is the properties to use for the unsubscription.
          */
-        virtual std::shared_ptr<Transaction> Unsubscribe(SubscribeTopic& topics,
+        virtual std::shared_ptr<Transaction> Unsubscribe(UnsubscribeTopic* topics,
                                                          Properties* properties) = 0;
         /**
          * This method publishes the given payload to the given topic.

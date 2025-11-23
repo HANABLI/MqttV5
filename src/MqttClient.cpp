@@ -249,7 +249,7 @@ namespace MqttV5
         /**
          * The completion delegate function
          */
-        std::function<void(Transaction::State state)> completionDelegate;
+        std::function<void(std::vector<ReasonCode>& reasons)> completionDelegate;
 
         /**
          * This flag indicates whether or not the connection used to
@@ -268,19 +268,23 @@ namespace MqttV5
          */
         std::recursive_mutex mutex;
 
-        using State = MqttClient::Transaction::State;
         /**
-         * This is the transaction state
+         * This is a vector of reason received on response to a transaction.
          */
-        State transactionState;
+        std::vector<Storage::ReasonCode> reasons;
+
+        using State = MqttClient::Transaction::State;
 
         void AwaitCompletion() override {}
-        void SetCompletionDelegate(std::function<void(Transaction::State state)> cb) override;
+        void SetCompletionDelegate(
+            std::function<void(std::vector<ReasonCode>& reasons)> cb) override;
 
-        void MarkComplete(State s);
+        void MarkComplete(State reasons);
 
         // déclarations seulement - supprimer les bodies inline
         void HandleConnAck(const uint8_t* packetPtr, uint32_t packetSize);
+        void HandleSubAck(const uint8_t* packetPtr, uint32_t packetSize);
+        void HandleUnSubAck(const uint8_t* packetPtr, uint32_t packetSize);
         void DataReceived(const std::vector<uint8_t>& data, double now);
         void ConnectionBroken(double now);
     };
@@ -396,6 +400,9 @@ namespace MqttV5
         // This is the transport layer implementation to use.
         std::shared_ptr<ClientTransportLayer> transport;
 
+        // This is the connection state
+        std::weak_ptr<ConnectionState> connectionState;
+
         // This is the object used to track time in the client.
         std::shared_ptr<TimeKeeper> timeKeeper;
 
@@ -504,48 +511,110 @@ namespace MqttV5
      *
      */
 
-    void TransactionImpl::SetCompletionDelegate(std::function<void(Transaction::State state)> cb) {
+    void TransactionImpl::SetCompletionDelegate(std::function<void(std::vector<ReasonCode>&)> cb) {
         std::unique_lock<decltype(mutex)> lock(mutex);
         this->completionDelegate = cb;
         const bool wasComplete = complete;
         lock.unlock();
         if (wasComplete)
-        { completionDelegate(transactionState); }
+        { cb(reasons); }
     }
 
-    void TransactionImpl::MarkComplete(State s) {
+    void TransactionImpl::MarkComplete(State state) {
         if (complete)
         { return; }
-        bool dropConnection = false;
-        std::function<void(Transaction::State state)> cb;
+        bool dropConnection = connectionState->broken;
+        std::function<void(std::vector<ReasonCode>&)> cb;
         {
             std::lock_guard<decltype(mutex)> lock(mutex);
             if (complete)
                 return;
-            transactionState = s;
+            transactionState = state;
             complete = true;
             cb = completionDelegate;
         }
         if (cb)
-        { cb(s); }
+        {
+            cb(reasons);
+            reasons.erase(reasons.begin(), reasons.end());
+        }
+    }
+
+    void TransactionImpl::HandleUnSubAck(const uint8_t* packetPtr, uint32_t packetSize) {
+        UnsubAckPacket unSubAck;
+        auto desSize = unSubAck.deserialize(packetPtr, packetSize);
+        if (!unSubAck.checkImpl() || (desSize != packetSize))
+        {
+            transactionState = State::ShunkedPacket;
+            return;
+        }
+        auto impl = impl_.lock();
+        if (unSubAck.fixedVariableHeader.packetID != packetID)
+        {
+            if (!connectionState->broken)
+            { connectionState->connection->Break(true); }
+            if (impl && impl->cb && connectionState->broken)
+            { (void)impl->cb->onConnectionLost(State::NetworkError); }
+        }
+
+        State allSuccess = State::Success;
+        for (uint32_t i = 0; i < unSubAck.payload.dataSize; ++i)
+        {
+            const uint8_t raw = unSubAck.payload.data[i];
+            if (raw >= 0x80)
+            { allSuccess = State::NetworkError; }
+            reasons.push_back(static_cast<Storage::ReasonCode>(raw));
+        }
+
+        MarkComplete(allSuccess);
+    }
+
+    void TransactionImpl::HandleSubAck(const uint8_t* packetPtr, uint32_t packetSize) {
+        SubAckPacket subAck;
+        auto desSize = subAck.deserialize(packetPtr, packetSize);
+        if (!subAck.checkImpl() || (desSize != packetSize))
+        {
+            transactionState = State::ShunkedPacket;
+            return;
+        }
+        auto impl = impl_.lock();
+        if (subAck.fixedVariableHeader.packetID != packetID)
+        {
+            if (!connectionState->broken)
+            { connectionState->connection->Break(true); }
+            if (impl && impl->cb && connectionState->broken)
+            { (void)impl->cb->onConnectionLost(State::NetworkError); }
+        }
+
+        State allSuccess = State::Success;
+        for (uint32_t i = 0; i < subAck.payload.dataSize; ++i)
+        {
+            const uint8_t raw = subAck.payload.data[i];
+            if (raw >= 0x80)
+            { allSuccess = State::NetworkError; }
+            reasons.push_back(static_cast<Storage::ReasonCode>(raw));
+        }
+
+        MarkComplete(allSuccess);
     }
 
     void TransactionImpl::HandleConnAck(const uint8_t* packetPtr, uint32_t packetSize) {
-        MqttV5::ConnAckPacket receivedAck;
+        ConnAckPacket receivedAck;
         uint32_t desSize = receivedAck.deserialize(packetPtr, packetSize);
         if (!receivedAck.checkImpl() || (desSize != packetSize))
         {
             MarkComplete(State::ShunkedPacket);
             return;
         }
-        // if (!receivedAck.props.checkPropertiesFor(ControlPacketType::CONNACK))
-        // {
-        //     MarkComplete(State::BadProperties);
-        //     return;
-        // }
         auto impl = impl_.lock();
-        auto rc = receivedAck.fixedVariableHeader.reasonCode;
-        if (rc == Storage::ReasonCode::Success)
+        if (impl->options.avoidValidation)
+        {
+            if (!receivedAck.props.checkPropertiesFor(ControlPacketType::CONNACK))
+            { MarkComplete(State::BadProperties); }
+        }
+        reasons.push_back((ReasonCode)receivedAck.fixedVariableHeader.reasonCode);
+
+        if (reasons.back() == Storage::ReasonCode::Success)
         {
             if (connectionState && impl)
             {
@@ -555,11 +624,8 @@ namespace MqttV5
         } else
         {
             MarkComplete(State::NetworkError);
-            if (impl && impl->cb)
-            {
-                auto r = static_cast<Storage::ReasonCode>(rc);
-                impl->cb->onConnectionLost(r);
-            }
+            if (impl && impl->cb && connectionState->broken)
+            { (void)impl->cb->onConnectionLost(State::NetworkError); }
         }
     }
 
@@ -579,15 +645,15 @@ namespace MqttV5
             if (available < 2)
                 break;
             ControlPacketType type;
-            FixedHeader header;
-            header.raw = rxBuf[offset];
-            type = (ControlPacketType)(uint8_t)header.type;
+            FixedHeaderBase header;
+            header.typeandFlags = rxBuf[offset];
+            type = (ControlPacketType)(uint8_t)header.getType();
             Mqtt_V5::VBInt len;
-            uint32_t r = len.readFrom(rxBuf.data() + 4, (uint32_t)available - 4);
+            uint32_t r = len.readFrom(rxBuf.data() + 1, (uint32_t)available - 1);
             if (r == MqttV5::Mqtt_V5::BadData || r == Mqtt_V5::NotEnoughData)
                 break;
             uint32_t remainingLength = len;
-            uint32_t totalPacketSize = remainingLength + len.getSerializedSize() + 4;
+            uint32_t totalPacketSize = remainingLength + len.getSerializedSize() + 1;
             if (available < totalPacketSize)
             { break; }
 
@@ -609,10 +675,10 @@ namespace MqttV5
                 // HandleSubscribe(packetPtr, packetSize);
                 break;
             case MqttV5::ControlPacketType::SUBACK:
-                // HandleSubAck(packetPtr, packetSize);
+                HandleSubAck(packetPtr, packetSize);
                 break;
-            case MqttV5::ControlPacketType::UNSUBSCRIBE:
-                // HandleUnsubscribe(packetPtr, packetSize);
+            case MqttV5::ControlPacketType::UNSUBACK:
+                HandleUnSubAck(packetPtr, packetSize);
                 break;
             case MqttV5::ControlPacketType::PINGRESP:
                 // HandlePingResp(packetPtr, packetSize);
@@ -697,15 +763,33 @@ namespace MqttV5
         const auto transaction = std::make_shared<TransactionImpl>();
 
         const std::string scheme = useTLS ? "mqtts" : "mqtt";
+        impl_->state = MqttClient::ClientState::Connecting;
         auto connectionState = impl_->CreateConnection(transaction, scheme, brokerHost, port);
         if (connectionState->broken)
         {
             impl_->diagnosticSender.SendDiagnosticInformationFormatted(
                 0, "Connection: State %d", Transaction::State::NetworkError);
-        }
+        } else
+        { impl_->connectionState = connectionState; }
+        // TODO Deal with time managment
         impl_->keepAlive =
             (keepAlive + (keepAlive / 2)) /
             2;  // Make it 75% of what's given so we always wake up before doom's clock
+
+        if (properties != nullptr)
+        {
+            if (!properties->getProperty(PropertyId::PacketSizeMax))
+            {
+                auto packetSizeMax = MaximumPacketSize_prop::create(impl_->maxPacketSize);
+                properties->addProperty(packetSizeMax);
+            }
+            if (!properties->getProperty(PropertyId::ReceiveMax))
+            {
+                auto receiveMax = ReceiveMaximum_prop::create(8UL / 3);
+                properties->addProperty(receiveMax);
+            }
+        }
+
         auto packet = PacketsBuilder::buildConnectPacket(impl_->clientID, userName, password, true,
                                                          impl_->keepAlive, willMessage, willQoS,
                                                          willRetain, properties);
@@ -717,15 +801,22 @@ namespace MqttV5
         //             0, "Check properties for Connection: State %d",
         //             Transaction::State::BadProperties);
         // }
-        uint8_t encodedConnect[1024] = {};
+
+        auto size = packet->computePacketSize(true);
+        uint8_t* encodedConnect = new uint8_t[(size_t)size];
         auto packetSize = packet->serialize(encodedConnect);
         std::vector<uint8_t> data(encodedConnect, encodedConnect + packetSize);
+        delete[] encodedConnect;
         transaction->connectionState = connectionState;
         transaction->impl_ = impl_;
         connectionState->connection->SendData(data);
 
         transaction->persistConnection = true;
-        transaction->transactionState = Transaction::State::WaitingForResult;
+        if (connectionState->broken == false)
+        {
+            transaction->transactionState = Transaction::State::WaitingForResult;
+        } else
+        { transaction->transactionState = Transaction::State::NetworkError; }
         connectionState->currentTransaction = transaction;
         return transaction;
     }
@@ -742,18 +833,88 @@ namespace MqttV5
                                const bool retainAsPublished, Properties* properties)
         -> std::shared_ptr<MqttClient::Transaction> {
         const auto transaction = std::make_shared<TransactionImpl>();
+        if (impl_->connectionState.lock()->broken)
+        {
+            impl_->diagnosticSender.SendDiagnosticInformationFormatted(
+                0, "Connection: State %d", Transaction::State::NetworkError);
+        }
+        transaction->packetID = impl_->nextPacketId();
+        auto packet = PacketsBuilder::buildSubscribePacket(
+            transaction->packetID, topic, retainHandling, withAutoFeedBack, maxAcceptedQos,
+            retainHandling, properties);
+        auto size = packet->computePacketSize(true);
+        uint8_t* encodedConnect = new uint8_t[(size_t)size];
+        auto packetSize = packet->serialize(encodedConnect);
+        std::vector<uint8_t> data(encodedConnect, encodedConnect + packetSize);
+        delete[] encodedConnect;
+        transaction->connectionState = impl_->connectionState.lock();
+        transaction->impl_ = impl_;
+        impl_->connectionState.lock()->connection->SendData(data);
+        transaction->persistConnection = true;
+        if (impl_->connectionState.lock()->broken == false)
+        {
+            transaction->transactionState = Transaction::State::WaitingForResult;
+        } else
+        { transaction->transactionState = Transaction::State::NetworkError; }
+        impl_->connectionState.lock()->currentTransaction = transaction;
         return transaction;
     }
 
-    auto MqttClient::Subscribe(SubscribeTopic& topics, Properties* properties)
+    auto MqttClient::Subscribe(SubscribeTopic* topics, Properties* properties)
         -> std::shared_ptr<MqttClient::Transaction> {
         const auto transaction = std::make_shared<TransactionImpl>();
+        if (impl_->connectionState.lock()->broken)
+        {
+            impl_->diagnosticSender.SendDiagnosticInformationFormatted(
+                0, "Connection: State %d", Transaction::State::NetworkError);
+        }
+        transaction->packetID = impl_->nextPacketId();
+        auto packet =
+            PacketsBuilder::buildSubscribePacket(transaction->packetID, topics, properties);
+        auto size = packet->computePacketSize(true);
+        uint8_t* encodedConnect = new uint8_t[(size_t)size];
+        auto packetSize = packet->serialize(encodedConnect);
+        std::vector<uint8_t> data(encodedConnect, encodedConnect + packetSize);
+        delete[] encodedConnect;
+        transaction->connectionState = impl_->connectionState.lock();
+        transaction->impl_ = impl_;
+        impl_->connectionState.lock()->connection->SendData(data);
+        transaction->persistConnection = true;
+        if (impl_->connectionState.lock()->broken == false)
+        {
+            transaction->transactionState = Transaction::State::WaitingForResult;
+        } else
+        { transaction->transactionState = Transaction::State::NetworkError; }
+        impl_->connectionState.lock()->currentTransaction = transaction;
         return transaction;
     }
 
-    auto MqttClient::Unsubscribe(SubscribeTopic& topics, Properties* properties)
+    auto MqttClient::Unsubscribe(UnsubscribeTopic* topics, Properties* properties)
         -> std::shared_ptr<MqttClient::Transaction> {
         const auto transaction = std::make_shared<TransactionImpl>();
+        if (impl_->connectionState.lock()->broken)
+        {
+            impl_->diagnosticSender.SendDiagnosticInformationFormatted(
+                0, "Connection: State %d", Transaction::State::NetworkError);
+        }
+        transaction->packetID = impl_->nextPacketId();
+        auto packet =
+            PacketsBuilder::buildUnsubscribePacket(transaction->packetID, topics, properties);
+        auto size = packet->computePacketSize(true);
+        uint8_t* encodedConnect = new uint8_t[(size_t)size];
+        auto packetSize = packet->serialize(encodedConnect);
+        std::vector<uint8_t> data(encodedConnect, encodedConnect + packetSize);
+        delete[] encodedConnect;
+        transaction->connectionState = impl_->connectionState.lock();
+        transaction->impl_ = impl_;
+        impl_->connectionState.lock()->connection->SendData(data);
+        transaction->persistConnection = true;
+        if (impl_->connectionState.lock()->broken == false)
+        {
+            transaction->transactionState = Transaction::State::WaitingForResult;
+        } else
+        { transaction->transactionState = Transaction::State::NetworkError; }
+        impl_->connectionState.lock()->currentTransaction = transaction;
         return transaction;
     }
 

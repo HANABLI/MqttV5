@@ -378,7 +378,9 @@ namespace MqttV5
     uint32_t Properties::getSerializedSize() const {
         uint32_t size = 0;
         PropertyCore* current = impl_->head;
-        while (current != nullptr)
+        if (current)
+        { size += impl_->length.getSerializedSize(); }
+        while (current)
         {
             size += current->getSerializedSize();  // Get the size of the serialized object
             current = current->next;               // Move to the next property

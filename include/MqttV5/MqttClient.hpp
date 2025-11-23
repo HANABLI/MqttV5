@@ -177,7 +177,7 @@ namespace MqttV5::Storage
                                        Properties& properties) = 0;
         virtual uint32_t maxPacketSize() const { return 2048U; }   // Default max packet size;
         virtual uint32_t maxUnAckedPackets() const { return 1U; }  // Default max unacked packets;
-        virtual bool onConnectionLost(const ReasonCode& reasonCode) = 0;
+        virtual bool onConnectionLost(const IMqttV5Client::Transaction::State& state) = 0;
         virtual ~MessageReceived() = default;
     };
 }  // namespace MqttV5::Storage
@@ -394,10 +394,10 @@ namespace MqttV5
             const QoSDelivery maxAcceptedQos = QoSDelivery::ExactlyOne,
             const bool retainAsPublished = true, Properties* properties = nullptr) override;
 
-        std::shared_ptr<Transaction> Subscribe(SubscribeTopic& topics,
+        std::shared_ptr<Transaction> Subscribe(SubscribeTopic* topics,
                                                Properties* properties = nullptr) override;
 
-        std::shared_ptr<Transaction> Unsubscribe(SubscribeTopic& topics,
+        std::shared_ptr<Transaction> Unsubscribe(UnsubscribeTopic* topics,
                                                  Properties* properties = nullptr) override;
 
         std::shared_ptr<Transaction> Publish(const char* topic, const char* payload,

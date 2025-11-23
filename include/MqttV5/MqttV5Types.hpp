@@ -12,7 +12,6 @@
 
 #include <stdint.h>
 #include <string_view>
-#include <array>
 #include <vector>
 #include <string>
 #include <string_view>
@@ -145,8 +144,8 @@ namespace MqttV5
             };
 
             union {
-                std::array<uint8_t, 4> raw;  //!< The raw data of the varint
-                uint32_t word;               //!< The value of the varint
+                uint8_t raw[4];  //!< The raw data of the varint
+                uint32_t word;   //!< The value of the varint
             };
 
             uint16_t size;  //!< The size of the varint in bytes
@@ -245,7 +244,7 @@ namespace MqttV5
             uint32_t getSerializedSize() const override { return size; }
 
             uint32_t serialize(uint8_t* buffer) override {
-                std::memcpy(buffer, raw.data(), size);
+                std::memcpy(buffer, raw, size);
                 return size;  // Retourne la taille totale des données sérialisées // Return the
                               // size of the varint
             }                 //!< Serialize the varint into the buffer
