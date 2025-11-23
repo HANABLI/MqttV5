@@ -152,4 +152,20 @@ namespace MqttV5
         return subAckPacket;
     }
 
+    ControlPacketSerializable* PacketsBuilder::buildUnsubAckPacket(const uint16_t packetId,
+                                                                   std::vector<uint8_t> reasons,
+                                                                   Properties* properties) {
+        UnsubAckPacket* unSubAckPacket = new UnsubAckPacket();
+        unSubAckPacket->fixedVariableHeader.packetID = packetId;
+        uint8_t* buffer = new uint8_t[reasons.size()];
+        std::copy(reasons.begin(), reasons.end(), buffer);
+        auto reasonsSize = unSubAckPacket->payload.deserialize(buffer, (uint32_t)reasons.size());
+        delete[] buffer;
+        if (properties)
+        { unSubAckPacket->props.captureProperties(*properties); }
+        unSubAckPacket->payload.setExpectedPacketSize(reasonsSize);
+        unSubAckPacket->computePacketSize(true);
+        return unSubAckPacket;
+    }
+
 }  // namespace MqttV5
