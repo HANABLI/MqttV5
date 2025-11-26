@@ -172,9 +172,8 @@ namespace MqttV5::Storage
     class MessageReceived
     {
     public:
-        virtual void onMessageReceived(const DynamicStringView& topic,
-                                       DynamicBinaryDataView& payload, uint16_t packetId,
-                                       Properties& properties) = 0;
+        virtual void onMessageReceived(const DynamicStringView topic, DynamicBinaryDataView payload,
+                                       uint16_t packetId) = 0;
         virtual uint32_t maxPacketSize() const { return 2048U; }   // Default max packet size;
         virtual uint32_t maxUnAckedPackets() const { return 1U; }  // Default max unacked packets;
         virtual bool onConnectionLost(const IMqttV5Client::Transaction::State& state) = 0;
@@ -283,19 +282,20 @@ namespace MqttV5
             MqttOptions options;
         };
 
-        enum ClientState
+        enum ClientState : int
         {
             Unknown = 0,
             Connecting = 1,
             Authenticating = 2,
             Running = 3,
             Subscribing = 4,
-            Unsubscribing = 5,
-            Pinging = 6,
-            Disconnecting = 7,
-            Disconnected = 8,
+            Publishing = 5,
+            Unsubscribing = 6,
+            Pinging = 7,
+            Disconnecting = 8,
+            Disconnected = 9,
 
-            Count = 9,
+            Count = 10,
         };
 
         // public life cycle managment
@@ -400,7 +400,7 @@ namespace MqttV5
         std::shared_ptr<Transaction> Unsubscribe(UnsubscribeTopic* topics,
                                                  Properties* properties = nullptr) override;
 
-        std::shared_ptr<Transaction> Publish(const char* topic, const char* payload,
+        std::shared_ptr<Transaction> Publish(const std::string topic, const std::string payload,
                                              const bool retain = false,
                                              const QoSDelivery QoS = QoSDelivery::AtMostOne,
                                              const uint16_t packetID = 0,

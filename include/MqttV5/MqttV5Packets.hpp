@@ -100,7 +100,7 @@ namespace MqttV5
         uint32_t deserialize(const uint8_t* buffer, uint32_t bufferSize) override {
             uint32_t offset =
                 FixedFieldGeneric::deserialize(buffer, bufferSize);  // Deserialize the fixed field
-            if (remainingLength == value.typeSize())
+            if (remainingLength < value.typeSize())
             {
                 return Shortcut;  // Return the size of the fixed field
             }
@@ -473,25 +473,6 @@ namespace MqttV5
         FixedFieldWithIDAndReasonCode() :
             FixedFieldWithRemainingLength(value, 3),
             value(*this) {}  //!< Default constructor for the FixedField class
-
-        uint32_t deserialize(const uint8_t* buffer, uint32_t bufferSize) override {
-            if (bufferSize < 2)
-                return NotEnoughData;                     // Not enough data
-            memcpy(&packetID, buffer, sizeof(packetID));  // Copy the packet ID from the buffer
-            packetID = BigEndian(packetID);               // Swap the packet ID to host order
-            if (remainingLength == 0)
-            {
-                reasonCode = 0;   // Set the reason code
-                return Shortcut;  // Return the size of the fixed field
-            }
-            value.value.reasonCode = buffer[2];  // Copy the reason code from the buffer
-            if (remainingLength == 1)
-            {
-                reasonCode = buffer[2];  // Set the reason code
-                return Shortcut;         // Return the size of the fixed field
-            }
-            return 3;  // Return the size of the fixed field
-        }              //!< Deserialize the object from the buffer
     };
 
     template <>
@@ -502,21 +483,7 @@ namespace MqttV5
     {};
     template <>
     struct FixedField<ControlPacketType::PUBACK> final : public FixedFieldWithIDAndReasonCode
-    {
-        uint32_t getSerializedSize() const override {
-            return FixedFieldWithIDAndReasonCode::getSerializedSize();
-        }
-
-        uint32_t serialize(uint8_t* buffer) override {
-            return FixedFieldWithIDAndReasonCode::serialize(buffer);
-        }
-
-        uint32_t deserialize(const uint8_t* buffer, uint32_t bufferSize) override {
-            return FixedFieldWithIDAndReasonCode::deserialize(buffer, bufferSize);
-        }
-
-        bool checkImpl() const override { return true; }
-    };
+    {};
 
     template <>
     struct FixedField<ControlPacketType::PUBREC> final : public FixedFieldWithIDAndReasonCode
@@ -1265,22 +1232,12 @@ namespace MqttV5
             payload.setFlags(fixedVariableHeader);
             fixedVariableHeader.setFlags(header.typeandFlags);
         }  //!< Default constructor for the ControlPacket class
-    };
-
-    struct PublishReplayPacket final : public ControlPacketSerializableImpl
-    {
-        FixedHeaderBase header;
-        FixedField<PUBACK> fixedVariableHeader;
-        typename VHPropertyChooser<PUBACK>::VHProperty props;
-        SerializablePayload payload;
-
-        PublishReplayPacket() :
-            ControlPacketSerializableImpl(header, fixedVariableHeader, props, payload) {
-        }  //!< Default constructor for the PublishReplayPacket class
-        PublishReplayPacket(FixedHeaderBase& header, FixedFieldGeneric& fixedVariableHeader,
-                            Properties& properties, SerializablePayload& payload) :
+        ControlPacket(FixedHeaderBase& header, FixedFieldGeneric& fixedVariableHeader,
+                      Properties& properties, SerializablePayload& payload) :
             ControlPacketSerializableImpl(header, fixedVariableHeader, properties, payload) {
-        }  //!< Constructor for the PublishReplayPacket class
+            payload.setFlags(fixedVariableHeader);
+            fixedVariableHeader.setFlags(header.typeandFlags);
+        }
     };
 
     template <ControlPacketType type>
@@ -1363,8 +1320,8 @@ namespace MqttV5
             Properties* properties = nullptr);
 
         static ControlPacketSerializable* buildPublishPacket(
-            const uint16_t packetID = 0, const char* topicName = "",
-            const uint8_t* payload = nullptr, const uint32_t payloadSize = 0,
+            const uint16_t packetID = 0, const std::string topicName = "",
+            const std::vector<uint8_t> payload = {}, const uint32_t payloadSize = 0,
             const QoSDelivery qos = QoSDelivery::AtLeastOne, const bool retain = false,
             Properties* properties = nullptr);
 

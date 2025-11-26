@@ -173,7 +173,7 @@ TEST_F(MqttV5PacketsTests, buildSubscribePacket) {
 
 TEST_F(MqttV5PacketsTests, buildandSerializePublishPacket) {
     const char* topicName = "test/topic";
-    const uint8_t payload[] = {0x01, 0x02, 0x03, 0x04};
+    const std::vector<uint8_t> payload = {0x01, 0x02, 0x03, 0x04};
     const QoSDelivery qos = QoSDelivery::AtLeastOne;
     const bool retain = true;
     const uint16_t packetID = 1234;
