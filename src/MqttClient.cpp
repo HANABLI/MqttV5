@@ -277,6 +277,7 @@ namespace MqttV5
         using State = MqttClient::Transaction::State;
 
         void AwaitCompletion() override {}
+
         void SetCompletionDelegate(
             std::function<void(std::vector<ReasonCode>& reasons)> cb) override;
 
@@ -1030,6 +1031,7 @@ namespace MqttV5
             impl_->diagnosticSender.SendDiagnosticInformationFormatted(
                 0, "Connection: State %d", Transaction::State::NetworkError);
         }
+        impl_->state = ClientState::Subscribing;
         transaction->packetID = impl_->nextPacketId();
         auto packet = PacketsBuilder::buildSubscribePacket(
             transaction->packetID, topic, retainHandling, withAutoFeedBack, maxAcceptedQos,
@@ -1060,6 +1062,7 @@ namespace MqttV5
             impl_->diagnosticSender.SendDiagnosticInformationFormatted(
                 0, "Connection: State %d", Transaction::State::NetworkError);
         }
+        impl_->state = ClientState::Subscribing;
         transaction->packetID = impl_->nextPacketId();
         auto packet =
             PacketsBuilder::buildSubscribePacket(transaction->packetID, topics, properties);
@@ -1088,7 +1091,9 @@ namespace MqttV5
         {
             impl_->diagnosticSender.SendDiagnosticInformationFormatted(
                 0, "Connection: State %d", Transaction::State::NetworkError);
+            return transaction;
         }
+        impl_->state = ClientState::Unsubscribing;
         transaction->packetID = impl_->nextPacketId();
         auto packet =
             PacketsBuilder::buildUnsubscribePacket(transaction->packetID, topics, properties);
@@ -1179,5 +1184,42 @@ namespace MqttV5
         if (this != &o)
             impl_ = std::move(o.impl_);
         return *this;
+    }
+
+    void PrintTo(const MqttV5::MqttClient::ClientState& state, std::ostream* os) {
+        switch (state)
+        {
+        case MqttV5::MqttClient::ClientState::Connecting: {
+            *os << "Connecting";
+        }
+        break;
+        case MqttV5::MqttClient::ClientState::Publishing: {
+            *os << "Publishing";
+        }
+        break;
+        case MqttV5::MqttClient::ClientState::Subscribing: {
+            *os << "Subscribing";
+        }
+        break;
+        case MqttV5::MqttClient::ClientState::Unsubscribing: {
+            *os << "Unsubscribing";
+        }
+        break;
+        case MqttV5::MqttClient::ClientState::Pinging: {
+            *os << "Pinging";
+        }
+        break;
+        case MqttV5::MqttClient::ClientState::Authenticating: {
+            *os << "Authenticating";
+        }
+        break;
+        case MqttV5::MqttClient::ClientState::Disconnecting: {
+            *os << "Disconnecting";
+        }
+        break;
+        default: {
+            *os << "???";
+        };
+        }
     }
 }  // namespace MqttV5
