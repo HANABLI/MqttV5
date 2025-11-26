@@ -224,10 +224,12 @@ namespace
         std::vector<std::string> receivedPayloads;
         std::atomic<int> lost{0};
 
-        void onMessageReceived(const Storage::DynamicStringView& topic,
-                               Storage::DynamicBinaryDataView& payload, uint16_t /*packetId*/,
-                               Storage::Properties& /*properties*/) override {
-            receivedTopics.emplace_back(std::string(topic.data, topic.size));
+        void onMessageReceived(const Storage::DynamicStringView topic,
+                               Storage::DynamicBinaryDataView payload, uint16_t /*packetId*/
+                               ) override {
+            auto topicAsString = std::string(reinterpret_cast<const char*>(topic.data), topic.size);
+            receivedTopics.emplace_back(topicAsString);
+
             receivedPayloads.emplace_back(
                 std::string(reinterpret_cast<const char*>(payload.data), payload.size));
         }
@@ -679,4 +681,210 @@ TEST_F(MqttV5ClientTests, UnsubscribeThenUnsubAck_test) {
     auto transactionWasCompleted = unSubAcktransactionCompleted.get_future();
     ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
     EXPECT_EQ(MqttClient::Transaction::State::Success, unsubscribeTransaction->transactionState);
+}
+
+TEST_F(MqttV5ClientTests, PublishQoS1ThenPubAckTransaction_test) {
+    std::string clientId = "client";
+    std::string userName = "user";
+    std::string string_pass = "pass";
+    std::string willPayload = "online";
+    auto encodedPass = utf.Encode(Utf8::AsciiToUnicode(string_pass));
+    DynamicBinaryData password(encodedPass.data(), static_cast<uint32_t>(encodedPass.size()));
+    auto encodedWill = utf.Encode(Utf8::AsciiToUnicode(willPayload));
+    DynamicBinaryData will(encodedWill.data(), static_cast<uint32_t>(encodedWill.size()));
+
+    WillMessage willMsg;
+    willMsg.topicName = "will/topic";
+    willMsg.payload = will;
+    auto connectTransaction =
+        client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr, &willMsg,
+                          MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
+    const auto& connection = conn();
+    uint16_t packetID = 1;
+    auto publishTransaction =
+        client->Publish("sensors/+/temp", "37", false, QoSDelivery::AtLeastOne, packetID, &props);
+    ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult,
+              publishTransaction->transactionState);
+    ASSERT_FALSE(connection->outgoing.empty());
+    const auto publish = connection->LastOutgoing();
+    PublishPacket packet;
+    auto desSize = packet.deserialize(publish.data(), (uint32_t)publish.size());
+    ASSERT_EQ(ControlPacketType::PUBLISH, packet.header.getType());
+    auto pubAckPacket = PacketsBuilder::buildPubAckPacket(packetID, ReasonCode::Success, &props);
+    auto pubAckPacketSize = pubAckPacket->computePacketSize(true);
+    auto pubAckBuffer = new uint8_t[(size_t)pubAckPacketSize];
+    auto pubPackSize = pubAckPacket->serialize(pubAckBuffer);
+    std::vector<uint8_t> pubAckIncomData(pubAckBuffer, pubAckBuffer + pubPackSize);
+    delete[] pubAckBuffer;
+    std::promise<void> pubAcktransactionCompleted;
+    publishTransaction->SetCompletionDelegate(
+        [&pubAcktransactionCompleted](std::vector<Storage::ReasonCode>& reasons)
+        {
+            pubAcktransactionCompleted.set_value();
+            for (const Storage::ReasonCode& i : reasons)
+            { EXPECT_EQ(Storage::ReasonCode::Success, i); }
+        });
+
+    connection->SimulateIncoming(pubAckIncomData);
+    auto transactionWasCompleted = pubAcktransactionCompleted.get_future();
+    ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
+    EXPECT_EQ(MqttClient::Transaction::State::Success, publishTransaction->transactionState);
+}
+
+TEST_F(MqttV5ClientTests, PublishQoS2ThenPubRecPubRelPubComTransactions_test) {
+    std::string clientId = "client";
+    std::string userName = "user";
+    std::string string_pass = "pass";
+    std::string willPayload = "online";
+    auto encodedPass = utf.Encode(Utf8::AsciiToUnicode(string_pass));
+    DynamicBinaryData password(encodedPass.data(), static_cast<uint32_t>(encodedPass.size()));
+    auto encodedWill = utf.Encode(Utf8::AsciiToUnicode(willPayload));
+    DynamicBinaryData will(encodedWill.data(), static_cast<uint32_t>(encodedWill.size()));
+
+    WillMessage willMsg;
+    willMsg.topicName = "will/topic";
+    willMsg.payload = will;
+    auto connectTransaction =
+        client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr, &willMsg,
+                          MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
+    const auto& connection = conn();
+    uint16_t packetID = 1;
+    auto publishTransaction =
+        client->Publish("sensors/+/temp", "37", false, QoSDelivery::ExactlyOne, packetID, &props);
+    ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult,
+              publishTransaction->transactionState);
+    const auto publish = connection->LastOutgoing();
+    PublishPacket pubPacket;
+    auto pubDesSize = pubPacket.deserialize(publish.data(), (uint32_t)publish.size());
+    ASSERT_EQ(ControlPacketType::PUBLISH, pubPacket.header.getType());
+    auto pubRecPacket = PacketsBuilder::buildPubRecPacket(packetID, ReasonCode::Success, &props);
+    auto pubRecPacketSize = pubRecPacket->computePacketSize(true);
+    auto pubRecBuffer = new uint8_t[(size_t)pubRecPacketSize];
+    auto pubRecSerSize = pubRecPacket->serialize(pubRecBuffer);
+    std::vector<uint8_t> pubRecData(pubRecBuffer, pubRecBuffer + pubRecSerSize);
+    delete[] pubRecBuffer;
+    std::promise<void> publishtransactionCompleted;
+    publishTransaction->SetCompletionDelegate(
+        [&publishtransactionCompleted](std::vector<Storage::ReasonCode>& reasons)
+        {
+            publishtransactionCompleted.set_value();
+            for (const Storage::ReasonCode& i : reasons)
+            { EXPECT_EQ(Storage::ReasonCode::Success, i); }
+        });
+    connection->SimulateIncoming(pubRecData);
+    auto transactionWasCompleted = publishtransactionCompleted.get_future();
+    ASSERT_EQ(std::future_status::timeout,
+              transactionWasCompleted.wait_for(std::chrono::seconds(1)));
+    const auto pubRel = connection->LastOutgoing();
+    PubRelPacket packet;
+    auto desSize = packet.deserialize(pubRel.data(), (uint32_t)pubRel.size());
+    ASSERT_EQ(ControlPacketType::PUBREL, packet.header.getType());
+    auto pubCompPacket = PacketsBuilder::buildPubCompPacket(packetID, ReasonCode::Success, &props);
+    auto pubCompPacketSize = pubCompPacket->computePacketSize(true);
+    auto pubCompBuffer = new uint8_t[(size_t)pubCompPacketSize];
+    auto pubCompSerSize = pubCompPacket->serialize(pubCompBuffer);
+    std::vector<uint8_t> pubCompData(pubCompBuffer, pubCompBuffer + pubCompSerSize);
+    delete[] pubCompBuffer;
+    connection->SimulateIncoming(pubCompData);
+    ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
+    ASSERT_EQ(MqttClient::Transaction::State::Success, publishTransaction->transactionState);
+}
+
+TEST_F(MqttV5ClientTests, HandlePublishQos1_test) {
+    std::string clientId = "client";
+    std::string userName = "user";
+    std::string string_pass = "pass";
+    std::string willPayload = "online";
+    auto encodedPass = utf.Encode(Utf8::AsciiToUnicode(string_pass));
+    DynamicBinaryData password(encodedPass.data(), static_cast<uint32_t>(encodedPass.size()));
+    auto encodedWill = utf.Encode(Utf8::AsciiToUnicode(willPayload));
+    DynamicBinaryData will(encodedWill.data(), static_cast<uint32_t>(encodedWill.size()));
+
+    WillMessage willMsg;
+    willMsg.topicName = "will/topic";
+    willMsg.payload = will;
+    auto connectTransaction =
+        client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr, &willMsg,
+                          MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
+    const auto& connection = conn();
+    Utf8::Utf8 utf;
+    int packetId = 1;
+    std::string payload = "37";
+    auto utfPayload = utf.Encode(Utf8::AsciiToUnicode(payload));
+    auto publishPacket = PacketsBuilder::buildPublishPacket(packetId, "sensors/+/temp", utfPayload,
+                                                            (uint32_t)utfPayload.size(),
+                                                            QoSDelivery::AtLeastOne, false, &props);
+    auto publishPacketSize = publishPacket->computePacketSize(true);
+    uint8_t* publishPacketBuf = new uint8_t[(size_t)publishPacketSize];
+    auto publishPacketSerSize = publishPacket->serialize(publishPacketBuf);
+    std::vector<uint8_t> data(publishPacketBuf, publishPacketBuf + publishPacketSerSize);
+
+    connection->SimulateIncoming(data);
+    ASSERT_EQ("sensors/+/temp", app->receivedTopics.back());
+    ASSERT_EQ(payload, app->receivedPayloads.back());
+
+    const auto pubAck = connection->LastOutgoing();
+
+    PubAckPacket packet;
+    auto desSize = packet.deserialize(pubAck.data(), (uint32_t)pubAck.size());
+    ASSERT_EQ(ControlPacketType::PUBACK, packet.header.getType());
+}
+
+TEST_F(MqttV5ClientTests, HandlePublishQos2_test) {
+    std::string clientId = "client";
+    std::string userName = "user";
+    std::string string_pass = "pass";
+    std::string willPayload = "online";
+    auto encodedPass = utf.Encode(Utf8::AsciiToUnicode(string_pass));
+    DynamicBinaryData password(encodedPass.data(), static_cast<uint32_t>(encodedPass.size()));
+    auto encodedWill = utf.Encode(Utf8::AsciiToUnicode(willPayload));
+    DynamicBinaryData will(encodedWill.data(), static_cast<uint32_t>(encodedWill.size()));
+
+    WillMessage willMsg;
+    willMsg.topicName = "will/topic";
+    willMsg.payload = will;
+    auto connectTransaction =
+        client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr, &willMsg,
+                          MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
+    const auto& connection = conn();
+    Utf8::Utf8 utf;
+    int packetId = 1;
+    std::string payload = "37";
+    auto utfPayload = utf.Encode(Utf8::AsciiToUnicode(payload));
+    auto publishPacket = PacketsBuilder::buildPublishPacket(packetId, "sensors/+/temp", utfPayload,
+                                                            (uint32_t)utfPayload.size(),
+                                                            QoSDelivery::ExactlyOne, false, &props);
+    auto publishPacketSize = publishPacket->computePacketSize(true);
+    uint8_t* publishPacketBuf = new uint8_t[(size_t)publishPacketSize];
+    auto publishPacketSerSize = publishPacket->serialize(publishPacketBuf);
+    std::vector<uint8_t> data(publishPacketBuf, publishPacketBuf + publishPacketSerSize);
+
+    connection->SimulateIncoming(data);
+    ASSERT_EQ("sensors/+/temp", app->receivedTopics.back());
+    ASSERT_EQ(payload, app->receivedPayloads.back());
+
+    const auto pubRec = connection->LastOutgoing();
+
+    PubRecPacket packet;
+    auto desSize = packet.deserialize(pubRec.data(), (uint32_t)pubRec.size());
+    ASSERT_EQ(ControlPacketType::PUBREC, packet.header.getType());
+
+    auto pubRelPacket = PacketsBuilder::buildPubRelPacket(packetId, ReasonCode::Success, &props);
+    auto pubRelPacketSize = pubRelPacket->computePacketSize(true);
+    uint8_t* pubRelPacketBuf = new uint8_t[(size_t)pubRelPacketSize];
+    auto pubRelPacketSerSize = pubRelPacket->serialize(pubRelPacketBuf);
+    std::vector<uint8_t> pubRelData(pubRelPacketBuf, pubRelPacketBuf + pubRelPacketSerSize);
+    std::promise<void> pubReltransactionCompleted;
+
+    connection->SimulateIncoming(pubRelData);
+
+    const auto pubComp = connection->LastOutgoing();
+
+    PubCompPacket pubCompPacket;
+    (void)pubCompPacket.deserialize(pubComp.data(), (uint32_t)pubComp.size());
+    ASSERT_EQ(ControlPacketType::PUBCOMP, pubCompPacket.header.getType());
 }
