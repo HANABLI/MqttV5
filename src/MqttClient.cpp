@@ -8,6 +8,7 @@
  */
 
 #include "MqttV5/MqttClient.hpp"
+#include <Utf8/Utf8.hpp>
 #include <vcruntime.h>
 #include <string>
 #include <memory>
@@ -285,6 +286,11 @@ namespace MqttV5
         void HandleConnAck(const uint8_t* packetPtr, uint32_t packetSize);
         void HandleSubAck(const uint8_t* packetPtr, uint32_t packetSize);
         void HandleUnSubAck(const uint8_t* packetPtr, uint32_t packetSize);
+        void HandlePublish(const uint8_t* packetPtr, uint32_t packetSize);
+        void HandlePubAck(const uint8_t* packetPtr, uint32_t packetSize);
+        void HandlePubRec(const uint8_t* packetPtr, uint32_t packetSize);
+        void HandlePubComp(const uint8_t* packetPtr, uint32_t packetSize);
+        void HandlePubRel(const uint8_t* packetPtr, uint32_t packetSize);
         void DataReceived(const std::vector<uint8_t>& data, double now);
         void ConnectionBroken(double now);
     };
@@ -610,7 +616,10 @@ namespace MqttV5
         if (impl->options.avoidValidation)
         {
             if (!receivedAck.props.checkPropertiesFor(ControlPacketType::CONNACK))
-            { MarkComplete(State::BadProperties); }
+            {
+                MarkComplete(State::BadProperties);
+                return;
+            }
         }
         reasons.push_back((ReasonCode)receivedAck.fixedVariableHeader.reasonCode);
 
@@ -627,6 +636,189 @@ namespace MqttV5
             if (impl && impl->cb && connectionState->broken)
             { (void)impl->cb->onConnectionLost(State::NetworkError); }
         }
+    }
+
+    void TransactionImpl::HandlePublish(const uint8_t* packetPtr, uint32_t packetSize) {
+        PublishPacket pubPacket;
+        auto desSize = pubPacket.deserialize(packetPtr, packetSize);
+        if (!pubPacket.checkImpl() || (desSize != packetSize))
+        {
+            MarkComplete(State::ShunkedPacket);
+            return;
+        }
+        auto impl = impl_.lock();
+        if (impl->options.avoidValidation)
+        {
+            if (!pubPacket.props.checkPropertiesFor(ControlPacketType::PUBLISH))
+            {
+                MarkComplete(State::BadProperties);
+                return;
+            }
+        }
+        auto qos = (QoSDelivery)pubPacket.header.getQoS();
+        auto packetID = pubPacket.fixedVariableHeader.packetID;
+
+        // auto prop = pubPacket.props;
+        DynamicBinaryDataView dynamaicPayload(pubPacket.payload.data, pubPacket.payload.dataSize);
+        DynamicStringView topicView(
+            reinterpret_cast<const char*>(pubPacket.fixedVariableHeader.topicName.data),
+            pubPacket.fixedVariableHeader.topicName.size);
+        impl->cb->onMessageReceived(topicView, dynamaicPayload, packetID);
+        if (qos == QoSDelivery::AtLeastOne)
+        {
+            auto pubAckPacket =
+                PacketsBuilder::buildPubAckPacket(packetID, ReasonCode::Success, nullptr);
+            auto pubAckPacketSize = pubAckPacket->computePacketSize(true);
+            auto pubAckBuff = new uint8_t[(size_t)pubAckPacketSize];
+            auto pubAckBuffSize = pubAckPacket->serialize(pubAckBuff);
+            std::vector<uint8_t> data(pubAckBuff, pubAckBuff + pubAckBuffSize);
+            connectionState->connection->SendData(data);
+            MarkComplete(State::Success);
+            return;
+        } else if (qos == QoSDelivery::ExactlyOne)
+        {
+            auto pubRecPacket =
+                PacketsBuilder::buildPubRecPacket(packetID, ReasonCode::Success, nullptr);
+            auto pubRecPacketSize = pubRecPacket->computePacketSize(true);
+            auto pubRecBuff = new uint8_t[(size_t)pubRecPacketSize];
+            auto pubRecBuffSize = pubRecPacket->serialize(pubRecBuff);
+            std::vector<uint8_t> data(pubRecBuff, pubRecBuff + pubRecBuffSize);
+            connectionState->connection->SendData(data);
+            return;
+        }
+        MarkComplete(State::Success);
+    }
+
+    void TransactionImpl::HandlePubAck(const uint8_t* packetPtr, uint32_t packetSize) {
+        PubAckPacket receivedPacket;
+        auto desSize = receivedPacket.deserialize(packetPtr, packetSize);
+        if (!receivedPacket.checkImpl() || (desSize != packetSize))
+        {
+            MarkComplete(State::ShunkedPacket);
+            return;
+        }
+        auto impl = impl_.lock();
+        if (impl->options.avoidValidation)
+        {
+            if (!receivedPacket.props.checkPropertiesFor(ControlPacketType::PUBACK))
+            { MarkComplete(State::BadProperties); }
+        }
+        auto id = receivedPacket.fixedVariableHeader.packetID;
+
+        auto i = impl->buffers.findID(id);
+        if (i < impl->buffers.end())
+        {
+            impl->buffers.releaseID(id);
+            (void)impl->removeQos(id);
+        } else
+        {
+            MarkComplete(State::StorageError);
+            return;
+        }
+        reasons.push_back((ReasonCode)receivedPacket.fixedVariableHeader.reasonCode);
+        if (reasons.back() == Storage::ReasonCode::Success)
+        {
+            MarkComplete(State::Success);
+        } else
+        {
+            MarkComplete(State::NetworkError);
+            if (impl && impl->cb && connectionState->broken)
+            { (void)impl->cb->onConnectionLost(State::NetworkError); }
+        }
+    }
+
+    void TransactionImpl::HandlePubRec(const uint8_t* packetPtr, uint32_t packetSize) {
+        PubAckPacket receivedPacket;
+        auto desSize = receivedPacket.deserialize(packetPtr, packetSize);
+        if (!receivedPacket.checkImpl() || (desSize != packetSize))
+        {
+            MarkComplete(State::ShunkedPacket);
+            return;
+        }
+        auto impl = impl_.lock();
+        if (impl->options.avoidValidation)
+        {
+            if (!receivedPacket.props.checkPropertiesFor(ControlPacketType::PUBREC))
+            {
+                MarkComplete(State::BadProperties);
+                return;
+            }
+        }
+        auto id = receivedPacket.fixedVariableHeader.packetID;
+        auto txReason = ReasonCode::Success;
+        auto i = impl->buffers.findID(id);
+        if (i < impl->buffers.end())
+        {
+            // Marquer passage à l'étage 2 Qos2
+            impl->buffers.avanceQoS2(id);
+
+        } else
+        { txReason = ReasonCode::PacketIdentifierNotFound; }
+        auto packet = PacketsBuilder::buildPubRelPacket(id, txReason, nullptr);
+        auto size = packet->computePacketSize(true);
+        auto encodedConnect = new uint8_t[(size_t)size];
+        auto serSize = packet->serialize(encodedConnect);
+        std::vector<uint8_t> data(encodedConnect, encodedConnect + serSize);
+        impl->connectionState.lock()->connection->SendData(data);
+    }
+
+    void TransactionImpl::HandlePubComp(const uint8_t* packetPtr, uint32_t packetSize) {
+        PubCompPacket receivedPacket;
+        auto desSize = receivedPacket.deserialize(packetPtr, packetSize);
+        if (!receivedPacket.checkImpl() || (desSize != packetSize))
+        {
+            MarkComplete(State::ShunkedPacket);
+            return;
+        }
+        auto impl = impl_.lock();
+        if (impl->options.avoidValidation)
+        {
+            if (!receivedPacket.props.checkPropertiesFor(ControlPacketType::PUBCOMP))
+            {
+                MarkComplete(State::BadProperties);
+                return;
+            }
+        }
+        auto id = receivedPacket.fixedVariableHeader.packetID;
+        auto rxReason = receivedPacket.fixedVariableHeader.reasonCode;
+        reasons.push_back((ReasonCode)rxReason);
+        auto allSuccess = State::Success;
+        if (!impl->buffers.releaseID(id))
+        { allSuccess = State::BadParameter; }
+        if (allSuccess == State::Success)
+        {
+            if (!impl->removeQos(id))
+            { allSuccess = State::StorageError; }
+        }
+
+        MarkComplete(allSuccess);
+    }
+
+    void TransactionImpl::HandlePubRel(const uint8_t* packetPtr, uint32_t packetSize) {
+        PubRelPacket receivedPacket;
+        auto desSize = receivedPacket.deserialize(packetPtr, packetSize);
+        if (!receivedPacket.checkImpl() || (desSize != packetSize))
+        {
+            MarkComplete(State::ShunkedPacket);
+            return;
+        }
+        auto impl = impl_.lock();
+        if (impl->options.avoidValidation)
+        {
+            if (!receivedPacket.props.checkPropertiesFor(ControlPacketType::PUBREL))
+            {
+                MarkComplete(State::BadProperties);
+                return;
+            }
+        }
+
+        auto pubCompPacket =
+            PacketsBuilder::buildPubCompPacket(packetID, ReasonCode::Success, nullptr);
+        auto pubCompPacketSize = pubCompPacket->computePacketSize(true);
+        auto pubCompBuff = new uint8_t[(size_t)pubCompPacketSize];
+        auto pubCompBuffSize = pubCompPacket->serialize(pubCompBuff);
+        std::vector<uint8_t> data(pubCompBuff, pubCompBuff + pubCompBuffSize);
+        connectionState->connection->SendData(data);
     }
 
     void TransactionImpl::DataReceived(const std::vector<uint8_t>& data, double now) {
@@ -666,10 +858,10 @@ namespace MqttV5
                 HandleConnAck(packetPtr, packetSize);
                 break;
             case MqttV5::ControlPacketType::PUBLISH:
-                // HandlePublish(packetPtr, packetSize);
+                HandlePublish(packetPtr, packetSize);
                 break;
             case MqttV5::ControlPacketType::PUBACK:
-                // HandlePubAck(packetPtr, packetSize);
+                HandlePubAck(packetPtr, packetSize);
                 break;
             case MqttV5::ControlPacketType::SUBSCRIBE:
                 // HandleSubscribe(packetPtr, packetSize);
@@ -687,13 +879,13 @@ namespace MqttV5
                 // HandlePingReq(packetPtr, packetSize);
                 break;
             case MqttV5::ControlPacketType::PUBREL:
-                // HandlePubRel(packetPtr, packetSize);
+                HandlePubRel(packetPtr, packetSize);
                 break;
             case MqttV5::ControlPacketType::PUBREC:
-                // HandlePubRec(packetPtr, packetSize);
+                HandlePubRec(packetPtr, packetSize);
                 break;
             case MqttV5::ControlPacketType::PUBCOMP:
-                // HandlePubComp(packetPtr, packetSize);
+                HandlePubComp(packetPtr, packetSize);
                 break;
             case MqttV5::ControlPacketType::AUTH:
                 // HandleAuth(packetPtr, packetSize);
@@ -918,10 +1110,52 @@ namespace MqttV5
         return transaction;
     }
 
-    auto MqttClient::Publish(const char* topic, const char* payload, const bool retain,
-                             const QoSDelivery QoS, const uint16_t packetID, Properties* properties)
+    auto MqttClient::Publish(const std::string topic, const std::string payload, const bool retain,
+                             const QoSDelivery qos, const uint16_t packetID, Properties* properties)
         -> std::shared_ptr<MqttClient::Transaction> {
         const auto transaction = std::make_shared<TransactionImpl>();
+        if (impl_->connectionState.lock()->broken)
+        {
+            impl_->diagnosticSender.SendDiagnosticInformationFormatted(
+                0, "Connection: State %d", Transaction::State::NetworkError);
+            return transaction;
+        }
+        transaction->packetID = impl_->nextPacketId();
+        impl_->state = ClientState::Publishing;
+        Utf8::Utf8 utf8;
+        const auto utf8Payload = utf8.Encode(Utf8::AsciiToUnicode(payload));
+        auto packet = PacketsBuilder::buildPublishPacket(transaction->packetID, topic, utf8Payload,
+                                                         (uint32_t)utf8Payload.size(), qos, retain,
+                                                         properties);
+        auto size = packet->computePacketSize();
+        uint8_t* encodedConnect = new uint8_t[(size_t)size];
+        auto packetSize = packet->serialize(encodedConnect);
+        std::vector<uint8_t> data(encodedConnect, encodedConnect + packetSize);
+        if (qos == QoSDelivery::AtLeastOne)
+        {
+            impl_->buffers.storeQos1ID(transaction->packetID);
+            impl_->saveQoS(transaction->packetID, data);
+        } else if (qos == QoSDelivery::ExactlyOne)
+        {
+            impl_->buffers.storeQoS2ID(transaction->packetID);
+            impl_->saveQoS(transaction->packetID, data);
+        }
+        delete[] encodedConnect;
+        transaction->connectionState = impl_->connectionState.lock();
+        transaction->impl_ = impl_;
+        impl_->connectionState.lock()->connection->SendData(data);
+        transaction->persistConnection = true;
+        if (impl_->connectionState.lock()->broken == false)
+        {
+            if (qos == QoSDelivery::AtMostOne)
+            {
+                transaction->transactionState = Transaction::State::Success;
+            } else
+            { transaction->transactionState = Transaction::State::WaitingForResult; }
+
+        } else
+        { transaction->transactionState = Transaction::State::NetworkError; }
+        impl_->connectionState.lock()->currentTransaction = transaction;
         return transaction;
     }
 

@@ -146,9 +146,9 @@ namespace MqttV5
          * @param[in] properties
          *      This is the properties to use for the publication.
          */
-        virtual std::shared_ptr<Transaction> Publish(const char* topic, const char* payload,
-                                                     const bool retain, const QoSDelivery QoS,
-                                                     const uint16_t packetID,
+        virtual std::shared_ptr<Transaction> Publish(const std::string topic,
+                                                     const std::string payload, const bool retain,
+                                                     const QoSDelivery QoS, const uint16_t packetID,
                                                      Properties* properties) = 0;
     };
 }  // namespace MqttV5

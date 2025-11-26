@@ -44,7 +44,7 @@ namespace MqttV5
     }
 
     ControlPacketSerializable* PacketsBuilder::buildPublishPacket(
-        const uint16_t packetID, const char* topicName, const uint8_t* payload,
+        const uint16_t packetID, const std::string topicName, const std::vector<uint8_t> payload,
         const uint32_t payloadSize, const QoSDelivery qos, const bool retain,
         Properties* properties) {
         // Implementation of the buildPublishPacket function
@@ -52,15 +52,17 @@ namespace MqttV5
 
         if (properties)
         { publishPacket->props.captureProperties(*properties); }
-
+        uint8_t* payloadBuff = new uint8_t[payload.size()];
+        std::copy(payload.begin(), payload.end(), payloadBuff);
         publishPacket->header.setRetained(retain);
         publishPacket->header.setDuplicated(false);
         publishPacket->header.setQos(qos);
         publishPacket->fixedVariableHeader.packetID = packetID;
         publishPacket->fixedVariableHeader.topicName = topicName;
         publishPacket->payload.setExpectedPacketSize(payloadSize);
-        publishPacket->payload.deserialize(payload, payloadSize);
+        publishPacket->payload.deserialize(payloadBuff, payloadSize);
         publishPacket->computePacketSize(true);
+        delete[] payloadBuff;
         return publishPacket;
     }
 
@@ -166,6 +168,54 @@ namespace MqttV5
         unSubAckPacket->payload.setExpectedPacketSize(reasonsSize);
         unSubAckPacket->computePacketSize(true);
         return unSubAckPacket;
+    }
+
+    ControlPacketSerializable* PacketsBuilder::buildPubAckPacket(const uint16_t packetId,
+                                                                 const uint8_t reasonCode,
+                                                                 Properties* properties) {
+        PubAckPacket* pubAckPacket = new PubAckPacket();
+        pubAckPacket->fixedVariableHeader.packetID = packetId;
+        pubAckPacket->fixedVariableHeader.reasonCode = reasonCode;
+        if (properties)
+        { pubAckPacket->props.captureProperties(*properties); }
+        pubAckPacket->computePacketSize(true);
+        return pubAckPacket;
+    }
+
+    ControlPacketSerializable* PacketsBuilder::buildPubRelPacket(const uint16_t packetId,
+                                                                 const uint8_t reasonCode,
+                                                                 Properties* properties) {
+        PubRelPacket* pubRelPacket = new PubRelPacket();
+        pubRelPacket->fixedVariableHeader.packetID = packetId;
+        pubRelPacket->fixedVariableHeader.reasonCode = reasonCode;
+        if (properties)
+        { pubRelPacket->props.captureProperties(*properties); }
+        pubRelPacket->computePacketSize(true);
+        return pubRelPacket;
+    }
+
+    ControlPacketSerializable* PacketsBuilder::buildPubRecPacket(const uint16_t packetId,
+                                                                 const uint8_t reasonCode,
+                                                                 Properties* properties) {
+        PubRecPacket* pubRelPacket = new PubRecPacket();
+        pubRelPacket->fixedVariableHeader.packetID = packetId;
+        pubRelPacket->fixedVariableHeader.reasonCode = reasonCode;
+        if (properties)
+        { pubRelPacket->props.captureProperties(*properties); }
+        pubRelPacket->computePacketSize(true);
+        return pubRelPacket;
+    }
+
+    ControlPacketSerializable* PacketsBuilder::buildPubCompPacket(const uint16_t packetId,
+                                                                  const uint8_t reasonCode,
+                                                                  Properties* properties) {
+        PubCompPacket* pubCompPacket = new PubCompPacket();
+        pubCompPacket->fixedVariableHeader.packetID = packetId;
+        pubCompPacket->fixedVariableHeader.reasonCode = reasonCode;
+        if (properties)
+        { pubCompPacket->props.captureProperties(*properties); }
+        pubCompPacket->computePacketSize(true);
+        return pubCompPacket;
     }
 
 }  // namespace MqttV5
