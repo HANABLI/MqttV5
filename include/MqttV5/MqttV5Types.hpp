@@ -284,7 +284,7 @@ namespace MqttV5
             uint16_t size;  //!< The size of the string
 
             uint32_t getSerializedSize() const override {
-                return 2 + (uint32_t)size;  // 2 bytes for size field + string size
+                return size > 0 ? 2 + (uint32_t)size : size;  // 2 bytes for size field + string size
             }
 
             uint32_t serialize(uint8_t* buffer) override {
@@ -569,7 +569,7 @@ namespace MqttV5
             uint16_t size;  //!< The size of the dynamic binary data
 
             uint32_t getSerializedSize() const override {
-                return sizeof(uint16_t) + size;  //!< Get the size of the dynamic binary data
+                return size > 0 ? sizeof(uint16_t) + size : size;  //!< Get the size of the dynamic binary data
             }                                    //!< Get the size of the dynamic binary data
 
             bool checkImpl() const override {

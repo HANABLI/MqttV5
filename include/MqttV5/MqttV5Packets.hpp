@@ -290,33 +290,33 @@ namespace MqttV5
 
     struct ConnectHeaderImpl
     {
-        std::vector<uint8_t> protocolName;  //!< Protocol name (MQTT)
-        uint8_t protocolLevel;              //!< Protocol level (4 for MQTT 3.1.1)
+        uint8_t protocolName[6];  //!< Protocol name (MQTT)
+        uint8_t protocolLevel;    //!< Protocol level (4 for MQTT 3.1.1)
         union {
-            BitField<uint8_t, 0, 1> reserved;      //!< Clean session flag
-            BitField<uint8_t, 1, 1> cleanSession;  //!< Clean session flag
-            BitField<uint8_t, 2, 1> willFlag;      //!< Will flag
-            BitField<uint8_t, 3, 2> willQoS;       //!< Will QoS flag
-            BitField<uint8_t, 5, 2> willRetain;    //!< Will QoS flag
-            BitField<uint8_t, 6, 1> password;      //!< Password flag
+            uint8_t flags;
             BitField<uint8_t, 7, 1> userName;      //!< User name flag
+            BitField<uint8_t, 6, 1> password;      //!< Password flag
+            BitField<uint8_t, 5, 2> willRetain;    //!< Will QoS flag
+            BitField<uint8_t, 3, 2> willQoS;       //!< Will QoS flag
+            BitField<uint8_t, 2, 1> willFlag;      //!< Will flag
+            BitField<uint8_t, 1, 1> cleanSession;  //!< Clean session flag
+            BitField<uint8_t, 0, 1> reserved;      //!< Clean session flag
 
         };                   //!< Connect flags
         uint16_t keepAlive;  //!< Keep alive interval
 
-        const std::vector<uint8_t> expectedProtocolName() const {
+        static const uint8_t* expectedProtocolName() {
             static uint8_t name[6] = {0, 4, 'M', 'Q', 'T', 'T'};
-            return std::vector<uint8_t>(name, name + sizeof(name));
+            return name;
         }  //!< Expected protocol name
 
         bool isValid() const {
             return reserved == 0 && willQoS < 3 &&
-                   memcmp(protocolName.data(), expectedProtocolName().data(),
-                          protocolName.size()) == 0;
+                   memcmp(protocolName, expectedProtocolName(), sizeof(protocolName)) == 0;
         }
 
-        ConnectHeaderImpl() : protocolLevel(5), keepAlive(0) {
-            protocolName = expectedProtocolName();
+        ConnectHeaderImpl() : protocolLevel(5), flags(0), keepAlive(0) {
+            memcpy(protocolName, expectedProtocolName(), sizeof(protocolName));
         }
         ~ConnectHeaderImpl() = default;
     };
@@ -354,8 +354,8 @@ namespace MqttV5
             }
 
             // Serialize the protocol name
-            memcpy(buffer, value.protocolName.data(), value.protocolName.size());
-            uint32_t offset = (uint32_t)value.protocolName.size();
+            memcpy(buffer, value.protocolName, sizeof(value.protocolName));
+            uint32_t offset = (uint32_t)sizeof(value.protocolName);
 
             // Serialize the protocol level
             buffer[offset++] = value.protocolLevel;
@@ -377,8 +377,8 @@ namespace MqttV5
             }
 
             // Deserialize the protocol name
-            memcpy(value.protocolName.data(), buffer, value.protocolName.size());
-            uint32_t offset = (uint32_t)value.protocolName.size();
+            memcpy(value.protocolName, buffer, sizeof(value.protocolName));
+            uint32_t offset = (uint32_t)sizeof(value.protocolName);
 
             // Deserialize the protocol level
             value.protocolLevel = buffer[offset++];
@@ -655,6 +655,7 @@ namespace MqttV5
             payload(std::move(other.payload)),
             willProperties(std::move(other.willProperties)) {
         }  //!< Move constructor for the WillMessage class
+        ~WillMessage() = default;  //!< Destructor for the WillMessage class
     };
 
     template <>
@@ -686,9 +687,9 @@ namespace MqttV5
         }                                     //!< Check if the will message is valid
 
         uint32_t getSerializedSize() const override {
-            return clientID.getSerializedSize() + userName.getSerializedSize() +
-                   password.getSerializedSize() + willMessage->getSerializedSize() +
-                   fixedHeader->getSerializedSize();  //!< Get the size of the payload
+            return clientID.getSerializedSize() + (fixedHeader->userName ? userName.getSerializedSize() : 0) +
+                   (fixedHeader->password? password.getSerializedSize() : 0) + (fixedHeader->willFlag ?
+                   willMessage->getSerializedSize() : 0);  //!< Get the size of the payload
         }                                             //!< Get the size of the payload
 
         uint32_t serialize(uint8_t* buffer) override {
@@ -771,10 +772,7 @@ namespace MqttV5
             }
             return *this;  //!< Return the payload
         }                  //!< Assignment operator for the Payload class
-        ~Payload() {
-            if (willMessage != nullptr)
-                delete willMessage;  //!< Delete the will message
-        }                            //!< Destructor for the Payload class
+        ~Payload() = default;
 
     private:
         const FixedField<CONNECT>* fixedHeader;
@@ -1154,9 +1152,11 @@ namespace MqttV5
         uint32_t computePacketSize(const bool includePayload = true) override {
             if (includePayload)
             {
-                uint32_t offset = fixedVariableHeader.getSerializedSize() +
-                                  props.getSerializedSize() +
-                                  payload.getSerializedSize();  // Get the offset of the payload
+                uint32_t fixVarHeadSize = fixedVariableHeader.getSerializedSize();
+                uint32_t propsSize = props.getSerializedSize();
+                uint32_t payloadSize = payload.getSerializedSize();
+                uint32_t offset =
+                    fixVarHeadSize + propsSize + payloadSize;  // Get the offset of the payload
 
                 remainingLength = offset;
                 return offset + 1 + remainingLength.getSerializedSize();
@@ -1297,7 +1297,7 @@ namespace MqttV5
     class PacketsBuilder
     {
     public:
-        static ControlPacketSerializable* buildConnectPacket(
+        static std::shared_ptr<ControlPacketSerializable> buildConnectPacket(
             const char* clientId = "", const char* username = "",
             const DynamicBinaryData* password = nullptr, bool cleanSession = true,
             uint16_t keepAlive = 60, WillMessage* willMessage = nullptr,

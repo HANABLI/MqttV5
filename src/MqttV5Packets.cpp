@@ -13,33 +13,76 @@ namespace MqttV5
     using namespace Common;
     using namespace Mqtt_V5;
 
-    ControlPacketSerializable* PacketsBuilder::buildConnectPacket(
+    std::shared_ptr< ControlPacketSerializable> PacketsBuilder::buildConnectPacket(
         const char* clientId, const char* username, const DynamicBinaryData* password,
         bool cleanSession, uint16_t keepAlive, WillMessage* willMessage, const QoSDelivery willQoS,
         const bool willRetain, Properties* properties) {
         // Implementation of the buildConnectPacket function
 
-        ConnectPacket* connectPacket = new ConnectPacket();
+        auto connectPacket = std::make_shared<ConnectPacket>();
 
-        // Header object
-        connectPacket->fixedVariableHeader.keepAlive = keepAlive;
-        connectPacket->fixedVariableHeader.cleanSession = cleanSession;
-        connectPacket->fixedVariableHeader.willFlag = willMessage != nullptr ? 1 : 0;
-        connectPacket->fixedVariableHeader.willQoS = (uint8_t)willQoS;
-        connectPacket->fixedVariableHeader.willRetain = willRetain;
-        connectPacket->fixedVariableHeader.userName = username != nullptr ? 1 : 0;
-        connectPacket->fixedVariableHeader.password =
-            password != nullptr && password->size > 0 ? 1 : 0;
-        // Payload object
+        // --- Fixed / Variable header ---
 
-        connectPacket->payload.clientID = clientId;
-        if (willMessage != nullptr)
-            connectPacket->payload.setWillMessage(willMessage);
-        if (username != nullptr)
-            connectPacket->payload.userName = username;
+        auto& vh = connectPacket->fixedVariableHeader;
+
+        vh.keepAlive = keepAlive;
+        vh.cleanSession = cleanSession ? 1 : 0;
+
+        // Will flags
+        if (willMessage->payload.size > 0)
+        {
+            vh.willFlag = 1;
+            vh.willQoS = static_cast<uint8_t>(willQoS);
+            vh.willRetain = willRetain ? 1 : 0;
+        } else
+        {
+            vh.willFlag = 0;
+            vh.willQoS = 0;
+            vh.willRetain = 0;
+        }
+
+        // Username / Password flags (attention, MQTT regarde juste ces bits)
+        const bool hasUserName = (username != nullptr && username[0] != '\0');
+
+        bool hasPassword = false;
         if (password != nullptr)
-            connectPacket->payload.password = *password;
+        {
+            // adapte ces champs à ta vraie struct DynamicBinaryData
+            hasPassword = (password->data != nullptr && password->size > 0);
+        }
+
+        vh.userName = hasUserName ? 1 : 0;
+        vh.password = hasPassword ? 1 : 0;
+
+        // --- Propriétés MQTT v5 (variable header) ---
+        if (properties != nullptr)
+        {
+            // en supposant que ConnectPacket a un membre .props compatible
+            connectPacket->props.captureProperties(*properties);
+        }
+
+        // --- Payload ---
+
+        // Client ID (obligatoire en v5 si ce n’est pas un mode spécial)
+        connectPacket->payload.clientID = clientId ? clientId : "";
+
+        // Will message
+        if (willMessage)
+        { connectPacket->payload.setWillMessage(willMessage); }
+
+        // Username (string)
+        if (hasUserName)
+        { connectPacket->payload.userName = username; }
+
+        // Password (binary)
+        if (hasPassword)
+        {
+            connectPacket->payload.password = *password;  // copie la struct
+        }
+
+        // Calculer Remaining Length / tailles internes
         connectPacket->computePacketSize(true);
+
         return connectPacket;
     }
 

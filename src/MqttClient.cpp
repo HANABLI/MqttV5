@@ -12,6 +12,7 @@
 #include <vcruntime.h>
 #include <string>
 #include <memory>
+#include <sstream>
 #include <mutex>
 
 namespace MqttV5
@@ -983,9 +984,9 @@ namespace MqttV5
             }
         }
 
-        auto packet = PacketsBuilder::buildConnectPacket(impl_->clientID, userName, password, true,
-                                                         impl_->keepAlive, willMessage, willQoS,
-                                                         willRetain, properties);
+        auto packet = PacketsBuilder::buildConnectPacket(
+            impl_->clientID, userName, password, cleanSession, impl_->keepAlive, willMessage,
+            willQoS, willRetain, properties);
         // TODO check validation in the PacketsBuilder module
         // if (impl_->options.avoidValidation)
         // {
@@ -994,16 +995,16 @@ namespace MqttV5
         //             0, "Check properties for Connection: State %d",
         //             Transaction::State::BadProperties);
         // }
-
+        std::vector<uint8_t> encodedConnect;
         auto size = packet->computePacketSize(true);
-        uint8_t* encodedConnect = new uint8_t[(size_t)size];
-        auto packetSize = packet->serialize(encodedConnect);
-        std::vector<uint8_t> data(encodedConnect, encodedConnect + packetSize);
-        delete[] encodedConnect;
+
+        encodedConnect.resize(size);
+        auto packetSize = packet->serialize(encodedConnect.data());
+
         transaction->connectionState = connectionState;
         transaction->impl_ = impl_;
+        auto data = encodedConnect;
         connectionState->connection->SendData(data);
-
         transaction->persistConnection = true;
         if (connectionState->broken == false)
         {

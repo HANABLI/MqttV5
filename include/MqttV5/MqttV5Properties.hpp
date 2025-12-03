@@ -31,7 +31,7 @@ namespace MqttV5
         PropertyId id;  //!< The ID of the property
 
         PropertyCore* next = nullptr;  //!< Pointer to the next property in the list
-        bool heapAllocated;  //!< Flag to indicate if the property is heap allocated
+        bool heapAllocated;            //!< Flag to indicate if the property is heap allocated
 
         uint32_t getSerializedSize() const override {
             return 0;
@@ -51,10 +51,8 @@ namespace MqttV5
 
         PropertyCore(PropertyId id = BadProperty, const bool heap = false) :
             id(id), heapAllocated(heap) {}  //!< Constructor for the PropertyCore class
-        virtual ~PropertyCore() {
-            if (heapAllocated)  // Check if the property is heap allocated
-                delete this;    //!< Delete the property if it is heap allocated
-        }                       //!< Destructor for the PropertyCore class
+        virtual ~PropertyCore() = default;
+        //!< Destructor for the PropertyCore class
     };
 
     struct PropertyCoreImpl : public PropertyCore
@@ -191,10 +189,7 @@ namespace MqttV5
         // Constructor accepting an rvalue reference
         Property(const PropertyId id, DynamicString&& val, bool heap = false) :
             PropertyCore(id, heap), value(std::move(val)) {}
-        ~Property() {
-            if (heapAllocated)  // Check if the property is heap allocated
-                delete this;    //!< Delete the property if it is heap allocated
-        }                       //!< Destructor for the Property class
+        ~Property() = default;
     };
 
     template <>
@@ -236,10 +231,7 @@ namespace MqttV5
                  const bool heap = false) :
             PropertyCore(id, heap), value(val) {}  //!< Constructor for the Property class
 
-        ~Property() {
-            if (heapAllocated)  // Check if the property is heap allocated
-                delete this;    //!< Delete the property if it is heap allocated
-        }                       //!< Destructor for the Property class
+        ~Property() = default;
     };
 
     template <>
@@ -281,10 +273,7 @@ namespace MqttV5
                  const bool heap = false) :
             PropertyCore(id, heap), value(val) {}  //!< Constructor for the Property class
 
-        ~Property() {
-            if (heapAllocated)  // Check if the property is heap allocated
-                delete this;    //!< Delete the property if it is heap allocated
-        }                       //!< Destructor for the Property class
+        ~Property() = default;
     };
 
     template <>

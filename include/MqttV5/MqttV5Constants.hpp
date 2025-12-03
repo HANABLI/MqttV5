@@ -210,7 +210,7 @@ namespace MqttV5
     };
 
     /** The possible Quality Of Service values */
-    enum QoSDelivery
+    enum QoSDelivery : unsigned int
     {
         AtMostOne = 0,   //!< At most one delivery (unsecure sending)
         AtLeastOne = 1,  //!< At least one delivery (could have retransmission)

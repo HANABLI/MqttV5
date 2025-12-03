@@ -377,9 +377,8 @@ namespace MqttV5
     }                  //!< Assignment operator for the Properties class
     uint32_t Properties::getSerializedSize() const {
         uint32_t size = 0;
-        PropertyCore* current = impl_->head;
-        if (current)
-        { size += impl_->length.getSerializedSize(); }
+        PropertyCore* current = impl_->head;    
+        size += impl_->length.getSerializedSize(); 
         while (current)
         {
             size += current->getSerializedSize();  // Get the size of the serialized object
