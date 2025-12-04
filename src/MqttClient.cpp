@@ -14,6 +14,9 @@
 #include <memory>
 #include <sstream>
 #include <mutex>
+#include <thread>
+#include <functional>
+#include <condition_variable>
 
 namespace MqttV5
 {
@@ -271,17 +274,27 @@ namespace MqttV5
         std::recursive_mutex mutex;
 
         /**
+         * This is used to wait for various object state changes.
+         */
+        std::condition_variable_any stateChange;
+
+        /**
          * This is a vector of reason received on response to a transaction.
          */
         std::vector<Storage::ReasonCode> reasons;
 
         using State = MqttClient::Transaction::State;
 
-        void AwaitCompletion() override {}
+        bool AwaitCompletion(const std::chrono::milliseconds& relativeTime) override;
+
+        void AwaitCompletion() override;
 
         void SetCompletionDelegate(
             std::function<void(std::vector<ReasonCode>& reasons)> cb) override;
 
+        /**
+         *
+         */
         void MarkComplete(State reasons);
 
         // déclarations seulement - supprimer les bodies inline
@@ -472,6 +485,7 @@ namespace MqttV5
             // create a new one.
 
             const auto connectionState = std::make_shared<ConnectionState>();
+            std::lock_guard<decltype(connectionState->mutex)> lock(connectionState->mutex);
             std::weak_ptr<ConnectionState> connectionStateWeak(connectionState);
             auto timeKeeperRef = timeKeeper;
 
@@ -514,10 +528,15 @@ namespace MqttV5
         }
     };
 
-    /**
-     *
-     *
-     */
+    bool TransactionImpl::AwaitCompletion(const std::chrono::milliseconds& relativeTime) {
+        std::unique_lock<decltype(mutex)> lock(mutex);
+        return stateChange.wait_for(lock, relativeTime, [this] { return complete; });
+    }
+
+    void TransactionImpl::AwaitCompletion() {
+        std::unique_lock<decltype(mutex)> lock(mutex);
+        return stateChange.wait(lock, [this] { return complete; });
+    }
 
     void TransactionImpl::SetCompletionDelegate(std::function<void(std::vector<ReasonCode>&)> cb) {
         std::unique_lock<decltype(mutex)> lock(mutex);
@@ -541,6 +560,7 @@ namespace MqttV5
             complete = true;
             cb = completionDelegate;
         }
+        stateChange.notify_all();
         if (cb)
         {
             cb(reasons);

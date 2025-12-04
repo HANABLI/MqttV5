@@ -47,6 +47,22 @@ namespace MqttV5
              * This indicate the packetID handled by the transaction
              */
             uint16_t packetID;
+
+            /**
+             * This method is used to wait for the transaction to complete.
+             *
+             * @note
+             *      This method will return immediately if the state is not
+             *      State::WaitingForResult.
+             * @param[in] relativeTime
+             *      This is the maximum amount of time, in milliseconds,
+             *      to wait for the transaction to complete.
+             * @return
+             *      An indication of whether or not the transaction was complete
+             *      in time is returned.
+             */
+            virtual bool AwaitCompletion(const std::chrono::milliseconds& relativeTime) = 0;
+
             /**
              * This method is used to wait for the transaction to complete.
              *
