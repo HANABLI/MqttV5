@@ -8,13 +8,18 @@
  */
 
 #include "MqttV5/MqttClient.hpp"
+#include "MqttV5/TimeKeeper.hpp"
 #include <Utf8/Utf8.hpp>
+#include <TimeTracking/TimeTracking.hpp>
+#include <StringUtils/StringUtils.hpp>
 #include <vcruntime.h>
 #include <string>
 #include <memory>
 #include <sstream>
 #include <mutex>
 #include <thread>
+#include <map>
+#include <set>
 #include <functional>
 #include <condition_variable>
 
@@ -195,6 +200,30 @@ namespace MqttV5
                                                             // up
     }
 
+    struct ClockWrapper : public TimeTracking::Clock
+    {
+        // Properties
+
+        /**
+         * This is the timekeeper wrapped by this adapter.
+         */
+        std::shared_ptr<MqttV5::TimeKeeper> timeKeeper;
+
+        // Methods
+
+        /**
+         * Construct a new wrapper for the given timekeeper.
+         *
+         * @param[in] timekeeper
+         *      This is the timekeeper wrapped by this adapter.
+         */
+        explicit ClockWrapper(std::shared_ptr<MqttV5::TimeKeeper> timeKeeper) :
+            timeKeeper(timeKeeper) {}
+
+        // Timekeeping::Clock
+
+        double GetCurrentTime() override { return timeKeeper->GetCurrentTime(); }
+    };
     /**
      * This holds onto all the information that a client has about
      * a connection to a server.
@@ -229,9 +258,17 @@ namespace MqttV5
         std::recursive_mutex mutex;
 
         /**
-         * Last inactivity for inactivity managment.
+         * This is the function to call to schedule the connection to
+         * be dropped if it remains inactive for too long past the current
+         * point in time.
          */
-        double lastActivitySeconds = 0.0;
+        std::function<void()> setInactivityTimeout;
+
+        /**
+         * This is the token representing the sheduled callback for timing
+         * out the connection for inactivity.
+         */
+        int inactivityCallbackToken = 0;
     };
 
     /**
@@ -240,6 +277,12 @@ namespace MqttV5
      */
     struct TransactionImpl : public MqttClient::Transaction
     {
+        /**
+         * This is the token representing the scheduled callback for timing
+         * out the transaction.
+         */
+        int receiveTimeoutToken = 0;
+
         /**
          * This is the state of the connection to the server
          * used by this transaction.
@@ -295,19 +338,123 @@ namespace MqttV5
         /**
          *
          */
-        void MarkComplete(State reasons);
+        void MarkComplete(State reasons, double now);
 
         // déclarations seulement - supprimer les bodies inline
-        void HandleConnAck(const uint8_t* packetPtr, uint32_t packetSize);
-        void HandleSubAck(const uint8_t* packetPtr, uint32_t packetSize);
-        void HandleUnSubAck(const uint8_t* packetPtr, uint32_t packetSize);
-        void HandlePublish(const uint8_t* packetPtr, uint32_t packetSize);
-        void HandlePubAck(const uint8_t* packetPtr, uint32_t packetSize);
-        void HandlePubRec(const uint8_t* packetPtr, uint32_t packetSize);
-        void HandlePubComp(const uint8_t* packetPtr, uint32_t packetSize);
-        void HandlePubRel(const uint8_t* packetPtr, uint32_t packetSize);
-        void DataReceived(const std::vector<uint8_t>& data, double now);
+        void HandleConnAck(const uint8_t* packetPtr, uint32_t packetSize, double now);
+        void HandlePingResp(const uint8_t* packetPtr, uint32_t packetSize, double now);
+        void HandleSubAck(const uint8_t* packetPtr, uint32_t packetSize, double now);
+        void HandleUnSubAck(const uint8_t* packetPtr, uint32_t packetSize, double now);
+        void HandlePublish(const uint8_t* packetPtr, uint32_t packetSize, double now);
+        void HandlePubAck(const uint8_t* packetPtr, uint32_t packetSize, double now);
+        void HandlePubRec(const uint8_t* packetPtr, uint32_t packetSize, double now);
+        void HandlePubComp(const uint8_t* packetPtr, uint32_t packetSize, double now);
+        void HandlePubRel(const uint8_t* packetPtr, uint32_t packetSize, double now);
+        bool DataReceived(const std::vector<uint8_t>& data, double now);
         void ConnectionBroken(double now);
+    };
+
+    class ClientConnectionPool
+    {
+        // Types
+    public:
+        typedef std::set<std::shared_ptr<ConnectionState>> ConnectionSet;
+        // Public Methods
+    public:
+        /**
+         * This method is attempts to find a connection in the pool that isn't
+         * broken and doesn't have any transaction using it. If one is found,
+         * the given transaction is assigned to it, and the connection is
+         * returned. Otherwise, nullptr is returned.
+         *
+         * @param[in] brokerId
+         *      This is a unique identifier of the broker for which a connection
+         *      is established, in the form host port.
+         *
+         * @param[in] transaction
+         *      This is the transaction to assigned to free connection.
+         *
+         * @param[in] time
+         *      This is the time in which the transaction began.
+         * @param[in] scheduler
+         *      This is used to schedule the work to be done without having
+         *      to poll the timekeeper.
+         * @return
+         *      If the given transaction was successfully assigned to a connection,
+         *      the connection is returned.
+         * @retval
+         *      A nullptr is returned if no free connection could be found.
+         */
+        std::shared_ptr<ConnectionState> AttachTransaction(
+            const std::string& brokerId, std::shared_ptr<TransactionImpl> transaction, double time,
+            TimeTracking::Scheduler& scheduler) {
+            std::lock_guard<decltype(mutex)> poolLock(mutex);
+            const auto connectionEntry = connections.find(brokerId);
+            if (connectionEntry != connections.end())
+            {
+                for (auto& connection : connectionEntry->second)
+                {
+                    if (!connection->broken && (connection->currentTransaction.lock() == nullptr))
+                    {
+                        if (connection->inactivityCallbackToken != 0)
+                        {
+                            scheduler.Cancel(connection->inactivityCallbackToken);
+                            connection->inactivityCallbackToken = 0;
+                        }
+                        connection->currentTransaction = transaction;
+                        return connection;
+                    }
+                }
+            }
+            return nullptr;
+        }
+
+        /**
+         * This adds the given connection to the pool, if it isn't broken.
+         *
+         * @param brokerId
+         *      This is the identifier of the broker to which the connection
+         *      is established.
+         * @param connection
+         *      This is the connection to add to the pool.
+         */
+        void AddConnection(const std::string& brokerId,
+                           std::shared_ptr<ConnectionState> connection) {
+            std::lock_guard<decltype(mutex)> poolLock(mutex);
+            std::lock_guard<decltype(connection->mutex)> connectionLock(connection->mutex);
+            if (!connection->broken)
+            { (void)connections[brokerId].insert(connection); }
+        }
+
+        /**
+         * This removes the given connection from the pool.
+         *
+         * @param brokerId
+         *      This is the identifier of the connection to drop from the pool.
+         *
+         * @param connection
+         *      This is the connection to drop from the pool.
+         */
+        void DropConnection(const std::string& brokenId,
+                            std::shared_ptr<ConnectionState> connection) {
+            std::lock_guard<decltype(mutex)> poolLock(mutex);
+            auto& connectionPool = connections[brokenId];
+            (void)connectionPool.erase(connection);
+            if (connectionPool.empty())
+            { (void)connections.erase(brokenId); }
+        }
+
+        // Properties
+    private:
+        /**
+         * This is the mutex used to synchronize access to the object.
+         */
+        std::mutex mutex;
+
+        /**
+         * This is the pool of connections, organized by identifier (host::port).
+         */
+        std::map<std::string, ConnectionSet> connections;
     };
 
     template <typename T>
@@ -412,12 +559,22 @@ namespace MqttV5
     struct MqttClient::Impl : public ImplBase<MqttClient::Impl>
     {
         /**
+         * This is the type used to handle collections of transactions that the
+         * client knows about.  The keys are arbitrary (but unique for the
+         * client instance) identifiers used to help select transactions from
+         * collections.
+         */
+        typedef std::map<unsigned int, std::weak_ptr<TransactionImpl>> TransactionCollection;
+
+        /**
          * This is the delegate to generate diagnostic messages
          * for the client.
          */
         SystemUtils::DiagnosticsSender diagnosticSender;
+
         // This is used to track if the client is mobilized
         bool mobilized = false;
+
         // This is the transport layer implementation to use.
         std::shared_ptr<ClientTransportLayer> transport;
 
@@ -426,6 +583,33 @@ namespace MqttV5
 
         // This is the object used to track time in the client.
         std::shared_ptr<TimeKeeper> timeKeeper;
+        /**
+         * This is used to schedule work to be done without having to
+         * poll the timekeeper.
+         */
+        std::shared_ptr<TimeTracking::Scheduler> scheduler;
+
+        /**
+         * This is used to hold onto persistent connections to servers.
+         */
+        std::shared_ptr<ClientConnectionPool> persistentConnections =
+            std::make_shared<ClientConnectionPool>();
+
+        /**
+         * This is the collection of client transactions currently active,
+         * keyed by transaction ID.
+         */
+        TransactionCollection activeTransactions;
+
+        /**
+         * This is the ID to assign to the next transaction.
+         */
+        unsigned int nextTransactionId = 1;
+
+        /**
+         * This is the mutex used to synchronize access to the object.
+         */
+        std::recursive_mutex mutex;
 
         // Options
         MqttOptions options;
@@ -479,35 +663,41 @@ namespace MqttV5
         }
 
         auto CreateConnection(std::shared_ptr<TransactionImpl> transaction,
-                              const std::string& scheme, const std::string& brokerHost,
-                              uint16_t port) -> std::shared_ptr<ConnectionState> {
+                              const std::string& brokerId, const std::string& scheme,
+                              const std::string& brokerHost, uint16_t port)
+            -> std::shared_ptr<ConnectionState> {
             // TODO either get a connection from a pool of connection or a map of connection neither
             // create a new one.
 
             const auto connectionState = std::make_shared<ConnectionState>();
             std::lock_guard<decltype(connectionState->mutex)> lock(connectionState->mutex);
             std::weak_ptr<ConnectionState> connectionStateWeak(connectionState);
+            std::weak_ptr<ClientConnectionPool> persistentConnectionsWeak(persistentConnections);
             auto timeKeeperRef = timeKeeper;
-
             connectionState->connection = transport->Connect(
                 scheme, brokerHost, port,
-                [connectionStateWeak, timeKeeperRef](const std::vector<uint8_t>& data)
+                [brokerId, connectionStateWeak, persistentConnectionsWeak,
+                 timeKeeperRef](const std::vector<uint8_t>& data)
                 {
                     const auto connectionState = connectionStateWeak.lock();
                     if (connectionState == nullptr)
                     { return; }
-                    std::shared_ptr<TransactionImpl> transaction;
 
+                    std::shared_ptr<TransactionImpl> transaction;
                     {
                         std::lock_guard<decltype(connectionState->mutex)> lock(
                             connectionState->mutex);
                         transaction = connectionState->currentTransaction.lock();
                     }
+
                     if (transaction == nullptr)
                     { return; }
-                    transaction->DataReceived(data, timeKeeperRef->GetCurrentTime());
+
+                    // Pour MQTT : on traite les données mais on NE DROPPE PAS la connexion.
+                    // La connexion doit rester ouverte tant que le client est actif.
+                    (void)transaction->DataReceived(data, timeKeeperRef->GetCurrentTime());
                 },
-                [connectionStateWeak, timeKeeperRef](bool)
+                [brokerId, connectionStateWeak, persistentConnectionsWeak, timeKeeperRef](bool)
                 {
                     const auto connectionState = connectionStateWeak.lock();
                     if (connectionState == nullptr)
@@ -522,9 +712,25 @@ namespace MqttV5
                     if (transaction == nullptr)
                     { return; }
                     transaction->ConnectionBroken(timeKeeperRef->GetCurrentTime());
+                    const auto persistentConnection = persistentConnectionsWeak.lock();
+                    if (persistentConnection != nullptr)
+                    { persistentConnection->DropConnection(brokerId, connectionState); }
                 });
             connectionState->currentTransaction = transaction;
             return connectionState;
+        }
+
+        /**
+         * This method adds the given transaction to the collection of
+         * transactions active for the client.
+         *
+         * @param[in] transaction
+         *     This is the transaction to add to the collection of transactions
+         *     active for the client.
+         */
+        void AddTransaction(std::shared_ptr<TransactionImpl> transaction) {
+            std::lock_guard<decltype(mutex)> lock(mutex);
+            activeTransactions[nextTransactionId++] = transaction;
         }
     };
 
@@ -547,28 +753,43 @@ namespace MqttV5
         { cb(reasons); }
     }
 
-    void TransactionImpl::MarkComplete(State state) {
+    void TransactionImpl::MarkComplete(State state, double due) {
+        std::lock_guard<decltype(mutex)> lock(mutex);
         if (complete)
         { return; }
-        bool dropConnection = connectionState->broken;
-        std::function<void(std::vector<ReasonCode>&)> cb;
+
+        transactionState = state;
+        complete = true;
+
+        // Gestion de la connexion :
+        // Pour MQTT on garde la connexion TCP persistante.
+        // On ne ferme la connexion que si elle a expiré (timeout).
+        if (connectionState && connectionState->connection != nullptr)
         {
-            std::lock_guard<decltype(mutex)> lock(mutex);
-            if (complete)
-                return;
-            transactionState = state;
-            complete = true;
-            cb = completionDelegate;
+            if (state == Transaction::State::TimedOut)
+            {
+                // En cas de timeout, on considère la connexion comme HS.
+                connectionState->connection->Break(false);
+                connectionState->broken = true;
+            }
+
+            connectionState->currentTransaction.reset();
+
+            if (connectionState->setInactivityTimeout != nullptr)
+            { connectionState->setInactivityTimeout(); }
         }
+
+        auto cb = completionDelegate;
         stateChange.notify_all();
-        if (cb)
+        if (cb != nullptr)
         {
             cb(reasons);
             reasons.erase(reasons.begin(), reasons.end());
         }
     }
 
-    void TransactionImpl::HandleUnSubAck(const uint8_t* packetPtr, uint32_t packetSize) {
+    void TransactionImpl::HandleUnSubAck(const uint8_t* packetPtr, uint32_t packetSize,
+                                         double now) {
         UnsubAckPacket unSubAck;
         auto desSize = unSubAck.deserialize(packetPtr, packetSize);
         if (!unSubAck.checkImpl() || (desSize != packetSize))
@@ -594,10 +815,10 @@ namespace MqttV5
             reasons.push_back(static_cast<Storage::ReasonCode>(raw));
         }
 
-        MarkComplete(allSuccess);
+        MarkComplete(allSuccess, now);
     }
 
-    void TransactionImpl::HandleSubAck(const uint8_t* packetPtr, uint32_t packetSize) {
+    void TransactionImpl::HandleSubAck(const uint8_t* packetPtr, uint32_t packetSize, double now) {
         SubAckPacket subAck;
         auto desSize = subAck.deserialize(packetPtr, packetSize);
         if (!subAck.checkImpl() || (desSize != packetSize))
@@ -623,15 +844,15 @@ namespace MqttV5
             reasons.push_back(static_cast<Storage::ReasonCode>(raw));
         }
 
-        MarkComplete(allSuccess);
+        MarkComplete(allSuccess, now);
     }
 
-    void TransactionImpl::HandleConnAck(const uint8_t* packetPtr, uint32_t packetSize) {
+    void TransactionImpl::HandleConnAck(const uint8_t* packetPtr, uint32_t packetSize, double now) {
         ConnAckPacket receivedAck;
         uint32_t desSize = receivedAck.deserialize(packetPtr, packetSize);
         if (!receivedAck.checkImpl() || (desSize != packetSize))
         {
-            MarkComplete(State::ShunkedPacket);
+            MarkComplete(State::ShunkedPacket, now);
             return;
         }
         auto impl = impl_.lock();
@@ -639,7 +860,7 @@ namespace MqttV5
         {
             if (!receivedAck.props.checkPropertiesFor(ControlPacketType::CONNACK))
             {
-                MarkComplete(State::BadProperties);
+                MarkComplete(State::BadProperties, now);
                 return;
             }
         }
@@ -650,22 +871,22 @@ namespace MqttV5
             if (connectionState && impl)
             {
                 impl->retransmitPending(connectionState);
-                MarkComplete(State::Success);
+                MarkComplete(State::Success, now);
             }
         } else
         {
-            MarkComplete(State::NetworkError);
+            MarkComplete(State::NetworkError, now);
             if (impl && impl->cb && connectionState->broken)
             { (void)impl->cb->onConnectionLost(State::NetworkError); }
         }
     }
 
-    void TransactionImpl::HandlePublish(const uint8_t* packetPtr, uint32_t packetSize) {
+    void TransactionImpl::HandlePublish(const uint8_t* packetPtr, uint32_t packetSize, double now) {
         PublishPacket pubPacket;
         auto desSize = pubPacket.deserialize(packetPtr, packetSize);
         if (!pubPacket.checkImpl() || (desSize != packetSize))
         {
-            MarkComplete(State::ShunkedPacket);
+            MarkComplete(State::ShunkedPacket, now);
             return;
         }
         auto impl = impl_.lock();
@@ -673,7 +894,7 @@ namespace MqttV5
         {
             if (!pubPacket.props.checkPropertiesFor(ControlPacketType::PUBLISH))
             {
-                MarkComplete(State::BadProperties);
+                MarkComplete(State::BadProperties, now);
                 return;
             }
         }
@@ -695,7 +916,7 @@ namespace MqttV5
             auto pubAckBuffSize = pubAckPacket->serialize(pubAckBuff);
             std::vector<uint8_t> data(pubAckBuff, pubAckBuff + pubAckBuffSize);
             connectionState->connection->SendData(data);
-            MarkComplete(State::Success);
+            MarkComplete(State::Success, now);
             return;
         } else if (qos == QoSDelivery::ExactlyOne)
         {
@@ -708,22 +929,22 @@ namespace MqttV5
             connectionState->connection->SendData(data);
             return;
         }
-        MarkComplete(State::Success);
+        MarkComplete(State::Success, now);
     }
 
-    void TransactionImpl::HandlePubAck(const uint8_t* packetPtr, uint32_t packetSize) {
+    void TransactionImpl::HandlePubAck(const uint8_t* packetPtr, uint32_t packetSize, double now) {
         PubAckPacket receivedPacket;
         auto desSize = receivedPacket.deserialize(packetPtr, packetSize);
         if (!receivedPacket.checkImpl() || (desSize != packetSize))
         {
-            MarkComplete(State::ShunkedPacket);
+            MarkComplete(State::ShunkedPacket, now);
             return;
         }
         auto impl = impl_.lock();
         if (impl->options.avoidValidation)
         {
             if (!receivedPacket.props.checkPropertiesFor(ControlPacketType::PUBACK))
-            { MarkComplete(State::BadProperties); }
+            { MarkComplete(State::BadProperties, now); }
         }
         auto id = receivedPacket.fixedVariableHeader.packetID;
 
@@ -734,27 +955,27 @@ namespace MqttV5
             (void)impl->removeQos(id);
         } else
         {
-            MarkComplete(State::StorageError);
+            MarkComplete(State::StorageError, now);
             return;
         }
         reasons.push_back((ReasonCode)receivedPacket.fixedVariableHeader.reasonCode);
         if (reasons.back() == Storage::ReasonCode::Success)
         {
-            MarkComplete(State::Success);
+            MarkComplete(State::Success, now);
         } else
         {
-            MarkComplete(State::NetworkError);
+            MarkComplete(State::NetworkError, now);
             if (impl && impl->cb && connectionState->broken)
             { (void)impl->cb->onConnectionLost(State::NetworkError); }
         }
     }
 
-    void TransactionImpl::HandlePubRec(const uint8_t* packetPtr, uint32_t packetSize) {
+    void TransactionImpl::HandlePubRec(const uint8_t* packetPtr, uint32_t packetSize, double now) {
         PubAckPacket receivedPacket;
         auto desSize = receivedPacket.deserialize(packetPtr, packetSize);
         if (!receivedPacket.checkImpl() || (desSize != packetSize))
         {
-            MarkComplete(State::ShunkedPacket);
+            MarkComplete(State::ShunkedPacket, now);
             return;
         }
         auto impl = impl_.lock();
@@ -762,7 +983,7 @@ namespace MqttV5
         {
             if (!receivedPacket.props.checkPropertiesFor(ControlPacketType::PUBREC))
             {
-                MarkComplete(State::BadProperties);
+                MarkComplete(State::BadProperties, now);
                 return;
             }
         }
@@ -784,12 +1005,12 @@ namespace MqttV5
         impl->connectionState.lock()->connection->SendData(data);
     }
 
-    void TransactionImpl::HandlePubComp(const uint8_t* packetPtr, uint32_t packetSize) {
+    void TransactionImpl::HandlePubComp(const uint8_t* packetPtr, uint32_t packetSize, double now) {
         PubCompPacket receivedPacket;
         auto desSize = receivedPacket.deserialize(packetPtr, packetSize);
         if (!receivedPacket.checkImpl() || (desSize != packetSize))
         {
-            MarkComplete(State::ShunkedPacket);
+            MarkComplete(State::ShunkedPacket, now);
             return;
         }
         auto impl = impl_.lock();
@@ -797,7 +1018,7 @@ namespace MqttV5
         {
             if (!receivedPacket.props.checkPropertiesFor(ControlPacketType::PUBCOMP))
             {
-                MarkComplete(State::BadProperties);
+                MarkComplete(State::BadProperties, now);
                 return;
             }
         }
@@ -813,15 +1034,15 @@ namespace MqttV5
             { allSuccess = State::StorageError; }
         }
 
-        MarkComplete(allSuccess);
+        MarkComplete(allSuccess, now);
     }
 
-    void TransactionImpl::HandlePubRel(const uint8_t* packetPtr, uint32_t packetSize) {
+    void TransactionImpl::HandlePubRel(const uint8_t* packetPtr, uint32_t packetSize, double now) {
         PubRelPacket receivedPacket;
         auto desSize = receivedPacket.deserialize(packetPtr, packetSize);
         if (!receivedPacket.checkImpl() || (desSize != packetSize))
         {
-            MarkComplete(State::ShunkedPacket);
+            MarkComplete(State::ShunkedPacket, now);
             return;
         }
         auto impl = impl_.lock();
@@ -829,7 +1050,7 @@ namespace MqttV5
         {
             if (!receivedPacket.props.checkPropertiesFor(ControlPacketType::PUBREL))
             {
-                MarkComplete(State::BadProperties);
+                MarkComplete(State::BadProperties, now);
                 return;
             }
         }
@@ -843,11 +1064,11 @@ namespace MqttV5
         connectionState->connection->SendData(data);
     }
 
-    void TransactionImpl::DataReceived(const std::vector<uint8_t>& data, double now) {
+    bool TransactionImpl::DataReceived(const std::vector<uint8_t>& data, double now) {
         std::unique_lock<decltype(mutex)> lock(mutex);
         auto connectionStateRef = connectionState;
         if (complete)
-        { return; }
+        { return false; }
         auto& rxBuf = connectionStateRef->rxBuffer;
         rxBuf.insert(rxBuf.end(), data.begin(), data.end());
 
@@ -877,43 +1098,43 @@ namespace MqttV5
             switch (type)
             {
             case MqttV5::ControlPacketType::CONNACK:
-                HandleConnAck(packetPtr, packetSize);
+                HandleConnAck(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::PUBLISH:
-                HandlePublish(packetPtr, packetSize);
+                HandlePublish(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::PUBACK:
-                HandlePubAck(packetPtr, packetSize);
+                HandlePubAck(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::SUBSCRIBE:
-                // HandleSubscribe(packetPtr, packetSize);
+                // HandleSubscribe(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::SUBACK:
-                HandleSubAck(packetPtr, packetSize);
+                HandleSubAck(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::UNSUBACK:
-                HandleUnSubAck(packetPtr, packetSize);
+                HandleUnSubAck(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::PINGRESP:
-                // HandlePingResp(packetPtr, packetSize);
+                // HandlePingResp(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::PINGREQ:
-                // HandlePingReq(packetPtr, packetSize);
+                // HandlePingReq(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::PUBREL:
-                HandlePubRel(packetPtr, packetSize);
+                HandlePubRel(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::PUBREC:
-                HandlePubRec(packetPtr, packetSize);
+                HandlePubRec(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::PUBCOMP:
-                HandlePubComp(packetPtr, packetSize);
+                HandlePubComp(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::AUTH:
-                // HandleAuth(packetPtr, packetSize);
+                // HandleAuth(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::DISCONNECT:
-                // HandleDisconnect(packetPtr, packetSize);
+                // HandleDisconnect(packetPtr, packetSize, now);
                 break;
             default:
                 break;
@@ -921,9 +1142,13 @@ namespace MqttV5
 
             offset += totalPacketSize;
         }
-        if (offset > 0)
-            rxBuf.erase(rxBuf.begin(), rxBuf.begin() + offset);
         lock.unlock();
+        if (offset > 0)
+        {
+            rxBuf.erase(rxBuf.begin(), rxBuf.begin() + offset);
+            return true;
+        } else
+        { return false; }
     }
 
     void TransactionImpl::ConnectionBroken(double now) {
@@ -932,7 +1157,7 @@ namespace MqttV5
         { return; }
 
         lock.unlock();
-        MarkComplete(State::NetworkError);
+        MarkComplete(State::NetworkError, now);
     }
 
     /**
@@ -948,10 +1173,13 @@ namespace MqttV5
         impl_->timeKeeper = deps.timeKeeper;
         impl_->requestTimeoutSeconds = deps.requestTimeoutSeconds;
         impl_->options = deps.options;
+        impl_->scheduler.reset(new TimeTracking::Scheduler);
+        impl_->scheduler->SetClock(std::make_shared<ClockWrapper>(impl_->timeKeeper));
         impl_->mobilized = true;
     }
 
     void MqttClient::Demobilize() {
+        impl_->scheduler = nullptr;
         impl_->timeKeeper = nullptr;
         impl_->transport = nullptr;
         impl_->mobilized = false;
@@ -961,6 +1189,8 @@ namespace MqttV5
         SystemUtils::DiagnosticsSender::DiagnosticMessageDelegate delegate, size_t minLevel) {
         return impl_->diagnosticSender.SubscribeToDiagnostics(delegate, minLevel);
     }
+
+    TimeTracking::Scheduler& MqttClient::GetScheduler() { return *impl_->scheduler; }
 
     auto MqttClient::ConnectTo(const std::string& brokerHost, const uint16_t port, bool useTLS,
                                const bool cleanSession, const uint16_t keepAlive,
@@ -975,10 +1205,61 @@ namespace MqttV5
             return nullptr;
         }
         const auto transaction = std::make_shared<TransactionImpl>();
+        std::weak_ptr<TransactionImpl> transactionWeak(transaction);
+        const auto timeKeeperCopy = impl_->timeKeeper;
+        transaction->receiveTimeoutToken = impl_->scheduler->Schedule(
+            [transactionWeak, timeKeeperCopy]
+            {
+                auto transaction = transactionWeak.lock();
+                if (transaction != nullptr)
+                {
+                    (void)transaction->MarkComplete(Transaction::State::TimedOut,
+                                                    timeKeeperCopy->GetCurrentTime());
+                }
+            },
+            impl_->timeKeeper->GetCurrentTime() + impl_->requestTimeoutSeconds);
+        const auto brokerId = StringUtils::sprintf("%s:%" PRIu16, brokerHost.c_str(), port);
+        const auto now = impl_->timeKeeper->GetCurrentTime();
+        auto connectionState = impl_->persistentConnections->AttachTransaction(
+            brokerId, transaction, now, *impl_->scheduler);
+        std::string scheme = useTLS ? "mqtts" : "mqtt";
+        if (connectionState == nullptr)
+        {
+            connectionState =
+                impl_->CreateConnection(transaction, brokerId, scheme, brokerHost, port);
+        }
 
-        const std::string scheme = useTLS ? "mqtts" : "mqtt";
+        if ((connectionState->connection != nullptr))
+        {
+            impl_->persistentConnections->AddConnection(brokerId, connectionState);
+            std::weak_ptr<Impl> implWeak(impl_);
+            std::weak_ptr<ConnectionState> connectionStateWeak(connectionState);
+            connectionState->setInactivityTimeout = [implWeak, brokerId, connectionStateWeak]()
+            {
+                auto impl = implWeak.lock();
+                auto connectionState = connectionStateWeak.lock();
+                if ((impl == nullptr) || (connectionState == nullptr))
+                { return; }
+                connectionState->inactivityCallbackToken = impl->scheduler->Schedule(
+                    [implWeak, brokerId, connectionStateWeak]
+                    {
+                        auto impl = implWeak.lock();
+                        auto connectionState = connectionStateWeak.lock();
+                        if ((impl == nullptr) || (connectionState == nullptr))
+                        { return; }
+                        std::lock_guard<decltype(connectionState->mutex)> connectionLock(
+                            connectionState->mutex);
+                        if (connectionState->currentTransaction.lock() != nullptr)
+                        { return; }
+                        // connectionState->broken = true;
+                        // impl->persistentConnections->DropConnection(brokerId, connectionState);
+                    },
+                    impl->timeKeeper->GetCurrentTime() + impl->inactivityInterval);
+            };
+        } else
+        { impl_->persistentConnections->DropConnection(brokerId, connectionState); }
+
         impl_->state = MqttClient::ClientState::Connecting;
-        auto connectionState = impl_->CreateConnection(transaction, scheme, brokerHost, port);
         if (connectionState->broken)
         {
             impl_->diagnosticSender.SendDiagnosticInformationFormatted(
@@ -1032,6 +1313,7 @@ namespace MqttV5
         } else
         { transaction->transactionState = Transaction::State::NetworkError; }
         connectionState->currentTransaction = transaction;
+        impl_->AddTransaction(transaction);
         return transaction;
     }
 

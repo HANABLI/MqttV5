@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <vector>
 #include <functional>
+#include <TimeTracking/TimeTracking.hpp>
 #include "SystemUtils/DiagnosticsSender.hpp"
 #include "IMqttClient.hpp"
 #include "Connection.hpp"
@@ -331,6 +332,14 @@ namespace MqttV5
          * state it was in before Mobilize was called.
          */
         void Demobilize();
+
+        /**
+         * Return access to the scheduler used by the mqtt client.
+         *
+         * @return
+         *     Access to the scheduler used by the mqtt client is returned.
+         */
+        TimeTracking::Scheduler& GetScheduler();
 
         /**
          * This method connects to the given broker using the given
