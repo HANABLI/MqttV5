@@ -654,7 +654,7 @@ namespace MqttV5
             topicName(std::move(other.topicName)),
             payload(std::move(other.payload)),
             willProperties(std::move(other.willProperties)) {
-        }  //!< Move constructor for the WillMessage class
+        }                          //!< Move constructor for the WillMessage class
         ~WillMessage() = default;  //!< Destructor for the WillMessage class
     };
 
@@ -687,10 +687,12 @@ namespace MqttV5
         }                                     //!< Check if the will message is valid
 
         uint32_t getSerializedSize() const override {
-            return clientID.getSerializedSize() + (fixedHeader->userName ? userName.getSerializedSize() : 0) +
-                   (fixedHeader->password? password.getSerializedSize() : 0) + (fixedHeader->willFlag ?
-                   willMessage->getSerializedSize() : 0);  //!< Get the size of the payload
-        }                                             //!< Get the size of the payload
+            return clientID.getSerializedSize() +
+                   (fixedHeader->userName ? userName.getSerializedSize() : 0) +
+                   (fixedHeader->password ? password.getSerializedSize() : 0) +
+                   (fixedHeader->willFlag ? willMessage->getSerializedSize()
+                                          : 0);  //!< Get the size of the payload
+        }                                        //!< Get the size of the payload
 
         uint32_t serialize(uint8_t* buffer) override {
             uint32_t offset = clientID.serialize(buffer);  // Serialize the client ID
@@ -1244,11 +1246,14 @@ namespace MqttV5
     struct PingPacket : public ControlPacketSerializable
     {
         typename ControlPacketCore<type>::FixedHeader header;
+        /** The remaining length in bytes */
+        VBInt remainingLength;
 
         PingPacket() {}
         uint32_t computePacketSize(const bool includePayload = true) override {
-            return header.getSerializedSize();  //!< Get the size of the packet
-        }                                       //!< Get the size of the packet
+            remainingLength = 0;
+            return header.getSerializedSize() + 1;  //!< Get the size of the packet
+        }                                           //!< Get the size of the packet
 
         uint32_t getSerializedSize() const override {
             return header.getSerializedSize();  //!< Get the size of the packet
@@ -1257,7 +1262,9 @@ namespace MqttV5
             return header.serialize(buffer);  // Serialize the fixed header
         }                                     //!< Serialize the packet into the buffer
         uint32_t deserialize(const uint8_t* buffer, uint32_t bufferSize) override {
-            return header.deserialize(buffer, bufferSize);  // Deserialize the fixed header
+            uint32_t offset = header.deserialize(buffer, bufferSize);
+            offset += remainingLength.deserialize(buffer + offset, bufferSize - offset);
+            return offset;  // Deserialize the fixed header
         }  //!< Deserialize the packet from the buffer
 
         bool checkImpl() const override {

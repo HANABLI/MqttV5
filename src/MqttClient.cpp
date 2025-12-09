@@ -1084,6 +1084,20 @@ namespace MqttV5
         connectionState->connection->SendData(data);
     }
 
+    void TransactionImpl::HandlePingResp(const uint8_t* packetPtr, uint32_t packetSize,
+                                         double now) {
+        PingRespPacket receivedPacket;
+        auto desSize = receivedPacket.deserialize(packetPtr, packetSize);
+        if (!receivedPacket.checkImpl() || (desSize != packetSize))
+        {
+            MarkComplete(State::ShunkedPacket, now);
+            return;
+        }
+        auto impl = impl_.lock();
+
+        MarkComplete(State::Success, now);
+    }
+
     bool TransactionImpl::DataReceived(const std::vector<uint8_t>& data, double now) {
         std::unique_lock<decltype(mutex)> lock(mutex);
         auto connectionStateRef = connectionState;
@@ -1136,7 +1150,7 @@ namespace MqttV5
                 HandleUnSubAck(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::PINGRESP:
-                // HandlePingResp(packetPtr, packetSize, now);
+                HandlePingResp(packetPtr, packetSize, now);
                 break;
             case MqttV5::ControlPacketType::PINGREQ:
                 // HandlePingReq(packetPtr, packetSize, now);
@@ -1325,6 +1339,79 @@ namespace MqttV5
         transaction->connectionState = connectionState;
         transaction->impl_ = impl_;
         auto data = encodedConnect;
+        connectionState->connection->SendData(data);
+        transaction->persistConnection = true;
+        if (connectionState->broken == false)
+        {
+            transaction->transactionState = Transaction::State::WaitingForResult;
+        } else
+        { transaction->transactionState = Transaction::State::NetworkError; }
+        connectionState->currentTransaction = transaction;
+        impl_->AddTransaction(transaction);
+        return transaction;
+    }
+
+    auto MqttClient::Ping(const std::string& brokerHost, const uint16_t port)
+        -> std::shared_ptr<MqttClient::Transaction> {
+        const auto transaction = std::make_shared<TransactionImpl>();
+        std::weak_ptr<TransactionImpl> transactionWeak(transaction);
+        const auto timeKeeperCopy = impl_->timeKeeper;
+        transaction->receiveTimeoutToken = impl_->scheduler->Schedule(
+            [transactionWeak, timeKeeperCopy]
+            {
+                auto transaction = transactionWeak.lock();
+                if (transaction != nullptr)
+                {
+                    (void)transaction->MarkComplete(Transaction::State::TimedOut,
+                                                    timeKeeperCopy->GetCurrentTime());
+                }
+            },
+            impl_->timeKeeper->GetCurrentTime() + impl_->requestTimeoutSeconds);
+
+        const auto brokerId = StringUtils::sprintf("%s:%" PRIu16, brokerHost.c_str(), port);
+        const auto now = impl_->timeKeeper->GetCurrentTime();
+        auto connectionState = impl_->persistentConnections->AttachTransaction(
+            brokerId, transaction, now, *impl_->scheduler);
+        if ((connectionState->connection != nullptr))
+        {
+            std::weak_ptr<Impl> implWeak(impl_);
+            std::weak_ptr<ConnectionState> connectionStateWeak(connectionState);
+            connectionState->setInactivityTimeout = [implWeak, brokerId, connectionStateWeak]()
+            {
+                auto impl = implWeak.lock();
+                auto connectionState = connectionStateWeak.lock();
+                if ((impl == nullptr) || (connectionState == nullptr))
+                { return; }
+                connectionState->inactivityCallbackToken = impl->scheduler->Schedule(
+                    [implWeak, brokerId, connectionStateWeak]
+                    {
+                        auto impl = implWeak.lock();
+                        auto connectionState = connectionStateWeak.lock();
+                        if ((impl == nullptr) || (connectionState == nullptr))
+                        { return; }
+                        std::lock_guard<decltype(connectionState->mutex)> connectionLock(
+                            connectionState->mutex);
+                        if (connectionState->currentTransaction.lock() != nullptr)
+                        { return; }
+                        // connectionState->broken = true;
+                        // impl->persistentConnections->DropConnection(brokerId, connectionState);
+                    },
+                    impl->timeKeeper->GetCurrentTime() + impl->inactivityInterval);
+            };
+        } else
+        { impl_->persistentConnections->DropConnection(brokerId, connectionState); }
+
+        auto packet = PacketsBuilder::buildPingPacket();
+
+        std::vector<uint8_t> encodedPing;
+        auto size = packet->computePacketSize(true);
+
+        encodedPing.resize(size);
+        auto packetSize = packet->serialize(encodedPing.data());
+
+        transaction->connectionState = connectionState;
+        transaction->impl_ = impl_;
+        auto data = encodedPing;
         connectionState->connection->SendData(data);
         transaction->persistConnection = true;
         if (connectionState->broken == false)
