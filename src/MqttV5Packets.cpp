@@ -13,7 +13,7 @@ namespace MqttV5
     using namespace Common;
     using namespace Mqtt_V5;
 
-    std::shared_ptr< ControlPacketSerializable> PacketsBuilder::buildConnectPacket(
+    std::shared_ptr<ControlPacketSerializable> PacketsBuilder::buildConnectPacket(
         const char* clientId, const char* username, const DynamicBinaryData* password,
         bool cleanSession, uint16_t keepAlive, WillMessage* willMessage, const QoSDelivery willQoS,
         const bool willRetain, Properties* properties) {
@@ -153,6 +153,7 @@ namespace MqttV5
     ControlPacketSerializable* PacketsBuilder::buildPingPacket() {
         // Implementation of the buildPingPacket function
         PingReqPacket* pingPacket = new PingReqPacket();
+        pingPacket->computePacketSize(true);
         return pingPacket;
     }
 

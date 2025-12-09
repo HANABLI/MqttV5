@@ -414,6 +414,8 @@ namespace MqttV5
                                              const QoSDelivery QoS = QoSDelivery::AtMostOne,
                                              const uint16_t packetID = 0,
                                              Properties* properties = nullptr) override;
+
+        std::shared_ptr<Transaction> Ping(const std::string& brokerHost, const uint16_t port);
         /**
          * This is the type of structure that contains the private
          * properties of the instance. It is defined in the implementation
