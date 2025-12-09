@@ -732,6 +732,25 @@ namespace MqttV5
             std::lock_guard<decltype(mutex)> lock(mutex);
             activeTransactions[nextTransactionId++] = transaction;
         }
+
+        /**
+         * This method remove the given transaction from the collection of transactions.
+         *
+         * @param[in] transaction
+         *     This is the transaction to remove from the collection of transactions
+         *     active for the client.
+         */
+        void RemoveTransaction(std::shared_ptr<TransactionImpl> transaction) {
+            std::lock_guard<decltype(mutex)> lock(mutex);
+            for (auto it = activeTransactions.begin(); it != activeTransactions.end(); ++it)
+            {
+                if (it->second.lock() == transaction)
+                {
+                    activeTransactions.erase(it);
+                    break;
+                }
+            }
+        }
     };
 
     bool TransactionImpl::AwaitCompletion(const std::chrono::milliseconds& relativeTime) {
@@ -786,6 +805,7 @@ namespace MqttV5
             cb(reasons);
             reasons.erase(reasons.begin(), reasons.end());
         }
+        impl_.lock()->RemoveTransaction(connectionState->currentTransaction.lock());
     }
 
     void TransactionImpl::HandleUnSubAck(const uint8_t* packetPtr, uint32_t packetSize,
