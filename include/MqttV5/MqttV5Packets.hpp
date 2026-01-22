@@ -110,14 +110,14 @@ namespace MqttV5
 
     struct FixedFieldWithID : public FixedFieldGeneric
     {
-        GenericType<uint16_t> packetID;  //!< Packet ID
+        Common::GenericType<uint16_t> packetID;  //!< Packet ID
 
         FixedFieldWithID() : FixedFieldGeneric(packetID){};
     };
 
     struct FixedFieldWithReason : public FixedFieldWithRemainingLength
     {
-        GenericType<uint8_t> reasonCode;  //!< Reason code
+        Common::GenericType<uint8_t> reasonCode;  //!< Reason code
 
         ReasonCode reason() const {
             return static_cast<ReasonCode>(reasonCode.value);  //!< Get the reason code
@@ -334,7 +334,7 @@ namespace MqttV5
     };
 
     template <>
-    struct GenericType<ConnectHeaderImpl> : public GenericTypeBase
+    struct Common::GenericType<ConnectHeaderImpl> : public GenericTypeBase
     {
         ConnectHeaderImpl& value;  //!< The value of the type
 
@@ -399,11 +399,11 @@ namespace MqttV5
     };
 
     template <>
-    struct GenericType<ConnACKHeaderImpl> : public GenericTypeBase
+    struct Common::GenericType<ConnACKHeaderImpl> : public GenericTypeBase
     {
         ConnACKHeaderImpl& value;  //!< The value of the type
 
-        GenericType<ConnACKHeaderImpl>& operator=(const ConnACKHeaderImpl& o) {
+        Common::GenericType<ConnACKHeaderImpl>& operator=(const ConnACKHeaderImpl& o) {
             value = o;
             return *this;
         }
@@ -424,7 +424,7 @@ namespace MqttV5
     class FixedField<ControlPacketType::CONNECT> final : public FixedFieldGeneric,
                                                          public ConnectHeaderImpl
     {
-        GenericType<ConnectHeaderImpl> value;  //!< The value of the type
+        Common::GenericType<ConnectHeaderImpl> value;  //!< The value of the type
 
     public:
         FixedField() :
@@ -436,7 +436,7 @@ namespace MqttV5
     class FixedField<ControlPacketType::CONNACK> final : public FixedFieldGeneric,
                                                          public ConnACKHeaderImpl
     {
-        GenericType<ConnACKHeaderImpl> value;  //!< The value of the type
+        Common::GenericType<ConnACKHeaderImpl> value;  //!< The value of the type
 
     public:
         FixedField() :
@@ -445,7 +445,7 @@ namespace MqttV5
     };
 
     template <>
-    struct GenericType<IDandReasonCode> final : public GenericTypeBase
+    struct Common::GenericType<IDandReasonCode> final : public GenericTypeBase
     {
         IDandReasonCode& value;  //!< The value of the type
 
@@ -467,7 +467,7 @@ namespace MqttV5
                                           public FixedFieldWithRemainingLength
 
     {
-        GenericType<IDandReasonCode> value;  //!< The value of the type
+        Common::GenericType<IDandReasonCode> value;  //!< The value of the type
 
     public:
         FixedFieldWithIDAndReasonCode() :
@@ -519,16 +519,16 @@ namespace MqttV5
     {};
 
     template <>
-    struct GenericType<TopicAndID> final : public GenericTypeBase
+    struct Common::GenericType<TopicAndID> final : public GenericTypeBase
     {
         TopicAndID& value;  //!< The value of the type
 
-        GenericType<TopicAndID>& operator=(const TopicAndID& o) {
+        Common::GenericType<TopicAndID>& operator=(const TopicAndID& o) {
             value = o;
             return *this;
         }
-        operator TopicAndID&() { return value; }         //!< Conversion operator to TopicAndID
-        GenericType(TopicAndID value) : value(value) {}  //!< Constructor for the GenericType class
+        operator TopicAndID&() { return value; }          //!< Conversion operator to TopicAndID
+        GenericType(TopicAndID& value) : value(value) {}  //!< Constructor for the GenericType class
 
         uint32_t typeSize() const override {
             return value.topicName.getSerializedSize();
@@ -550,7 +550,7 @@ namespace MqttV5
     struct FixedField<ControlPacketType::PUBLISH> final : public TopicAndID,
                                                           public FixedFieldGeneric
     {
-        GenericType<TopicAndID> value;  //!< The value of the type
+        Common::GenericType<TopicAndID> value;  //!< The value of the type
     private:
         const uint8_t* flags;  //!< Flags for the fixed field
     public:
