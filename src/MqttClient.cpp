@@ -1226,12 +1226,12 @@ namespace MqttV5
 
     TimeTracking::Scheduler& MqttClient::GetScheduler() { return *impl_->scheduler; }
 
-    auto MqttClient::ConnectTo(const std::string& brokerHost, const uint16_t port, bool useTLS,
-                               const bool cleanSession, const uint16_t keepAlive,
-                               const char* userName, const DynamicBinaryData* password,
-                               WillMessage* willMessage, const QoSDelivery willQoS,
-                               const bool willRetain, Properties* properties)
-        -> std::shared_ptr<MqttClient::Transaction> {
+    auto MqttClient::ConnectTo(const std::string& brokerId, const std::string& brokerHost,
+                               const uint16_t port, bool useTLS, const bool cleanSession,
+                               const uint16_t keepAlive, const char* userName,
+                               const DynamicBinaryData* password, WillMessage* willMessage,
+                               const QoSDelivery willQoS, const bool willRetain,
+                               Properties* properties) -> std::shared_ptr<MqttClient::Transaction> {
         if (!impl_->transport || !impl_->mobilized)
         {
             impl_->diagnosticSender.SendDiagnosticInformationString(
@@ -1252,7 +1252,6 @@ namespace MqttV5
                 }
             },
             impl_->timeKeeper->GetCurrentTime() + impl_->requestTimeoutSeconds);
-        const auto brokerId = StringUtils::sprintf("%s:%" PRIu16, brokerHost.c_str(), port);
         const auto now = impl_->timeKeeper->GetCurrentTime();
         auto connectionState = impl_->persistentConnections->AttachTransaction(
             brokerId, transaction, now, *impl_->scheduler);
@@ -1351,8 +1350,7 @@ namespace MqttV5
         return transaction;
     }
 
-    auto MqttClient::Ping(const std::string& brokerHost, const uint16_t port)
-        -> std::shared_ptr<MqttClient::Transaction> {
+    auto MqttClient::Ping(const std::string& brokerId) -> std::shared_ptr<MqttClient::Transaction> {
         const auto transaction = std::make_shared<TransactionImpl>();
         std::weak_ptr<TransactionImpl> transactionWeak(transaction);
         const auto timeKeeperCopy = impl_->timeKeeper;
@@ -1367,8 +1365,6 @@ namespace MqttV5
                 }
             },
             impl_->timeKeeper->GetCurrentTime() + impl_->requestTimeoutSeconds);
-
-        const auto brokerId = StringUtils::sprintf("%s:%" PRIu16, brokerHost.c_str(), port);
         const auto now = impl_->timeKeeper->GetCurrentTime();
         auto connectionState = impl_->persistentConnections->AttachTransaction(
             brokerId, transaction, now, *impl_->scheduler);
@@ -1431,17 +1427,58 @@ namespace MqttV5
         return transaction;
     }
 
-    auto MqttClient::Subscribe(const char* topic, const RetainHandling retainHandling,
-                               const bool withAutoFeedBack, const QoSDelivery maxAcceptedQos,
-                               const bool retainAsPublished, Properties* properties)
-        -> std::shared_ptr<MqttClient::Transaction> {
+    auto MqttClient::Subscribe(const std::string& brokerId, const char* topic,
+                               const RetainHandling retainHandling, const bool withAutoFeedBack,
+                               const QoSDelivery maxAcceptedQos, const bool retainAsPublished,
+                               Properties* properties) -> std::shared_ptr<MqttClient::Transaction> {
         const auto transaction = std::make_shared<TransactionImpl>();
-        if (impl_->connectionState.lock()->broken)
-        {
-            impl_->diagnosticSender.SendDiagnosticInformationFormatted(
-                0, "Connection: State %d", Transaction::State::NetworkError);
-        }
         impl_->state = ClientState::Subscribing;
+        std::weak_ptr<TransactionImpl> transactionWeak(transaction);
+        const auto timeKeeperCopy = impl_->timeKeeper;
+        transaction->receiveTimeoutToken = impl_->scheduler->Schedule(
+            [transactionWeak, timeKeeperCopy]
+            {
+                auto transaction = transactionWeak.lock();
+                if (transaction != nullptr)
+                {
+                    (void)transaction->MarkComplete(Transaction::State::TimedOut,
+                                                    timeKeeperCopy->GetCurrentTime());
+                }
+            },
+            impl_->timeKeeper->GetCurrentTime() + impl_->requestTimeoutSeconds);
+
+        const auto now = impl_->timeKeeper->GetCurrentTime();
+        auto connectionState = impl_->persistentConnections->AttachTransaction(
+            brokerId, transaction, now, *impl_->scheduler);
+        if ((connectionState->connection != nullptr))
+        {
+            std::weak_ptr<Impl> implWeak(impl_);
+            std::weak_ptr<ConnectionState> connectionStateWeak(connectionState);
+            connectionState->setInactivityTimeout = [implWeak, brokerId, connectionStateWeak]()
+            {
+                auto impl = implWeak.lock();
+                auto connectionState = connectionStateWeak.lock();
+                if ((impl == nullptr) || (connectionState == nullptr))
+                { return; }
+                connectionState->inactivityCallbackToken = impl->scheduler->Schedule(
+                    [implWeak, brokerId, connectionStateWeak]
+                    {
+                        auto impl = implWeak.lock();
+                        auto connectionState = connectionStateWeak.lock();
+                        if ((impl == nullptr) || (connectionState == nullptr))
+                        { return; }
+                        std::lock_guard<decltype(connectionState->mutex)> connectionLock(
+                            connectionState->mutex);
+                        if (connectionState->currentTransaction.lock() != nullptr)
+                        { return; }
+                        // connectionState->broken = true;
+                        // impl->persistentConnections->DropConnection(brokerId, connectionState);
+                    },
+                    impl->timeKeeper->GetCurrentTime() + impl->inactivityInterval);
+            };
+        } else
+        { impl_->persistentConnections->DropConnection(brokerId, connectionState); }
+
         transaction->packetID = impl_->nextPacketId();
         auto packet = PacketsBuilder::buildSubscribePacket(
             transaction->packetID, topic, retainHandling, withAutoFeedBack, maxAcceptedQos,
@@ -1464,8 +1501,8 @@ namespace MqttV5
         return transaction;
     }
 
-    auto MqttClient::Subscribe(SubscribeTopic* topics, Properties* properties)
-        -> std::shared_ptr<MqttClient::Transaction> {
+    auto MqttClient::Subscribe(const std::string& brokerId, SubscribeTopic* topics,
+                               Properties* properties) -> std::shared_ptr<MqttClient::Transaction> {
         const auto transaction = std::make_shared<TransactionImpl>();
         if (impl_->connectionState.lock()->broken)
         {
@@ -1473,6 +1510,52 @@ namespace MqttV5
                 0, "Connection: State %d", Transaction::State::NetworkError);
         }
         impl_->state = ClientState::Subscribing;
+        std::weak_ptr<TransactionImpl> transactionWeak(transaction);
+        const auto timeKeeperCopy = impl_->timeKeeper;
+        transaction->receiveTimeoutToken = impl_->scheduler->Schedule(
+            [transactionWeak, timeKeeperCopy]
+            {
+                auto transaction = transactionWeak.lock();
+                if (transaction != nullptr)
+                {
+                    (void)transaction->MarkComplete(Transaction::State::TimedOut,
+                                                    timeKeeperCopy->GetCurrentTime());
+                }
+            },
+            impl_->timeKeeper->GetCurrentTime() + impl_->requestTimeoutSeconds);
+
+        const auto now = impl_->timeKeeper->GetCurrentTime();
+        auto connectionState = impl_->persistentConnections->AttachTransaction(
+            brokerId, transaction, now, *impl_->scheduler);
+        if ((connectionState->connection != nullptr))
+        {
+            std::weak_ptr<Impl> implWeak(impl_);
+            std::weak_ptr<ConnectionState> connectionStateWeak(connectionState);
+            connectionState->setInactivityTimeout = [implWeak, brokerId, connectionStateWeak]()
+            {
+                auto impl = implWeak.lock();
+                auto connectionState = connectionStateWeak.lock();
+                if ((impl == nullptr) || (connectionState == nullptr))
+                { return; }
+                connectionState->inactivityCallbackToken = impl->scheduler->Schedule(
+                    [implWeak, brokerId, connectionStateWeak]
+                    {
+                        auto impl = implWeak.lock();
+                        auto connectionState = connectionStateWeak.lock();
+                        if ((impl == nullptr) || (connectionState == nullptr))
+                        { return; }
+                        std::lock_guard<decltype(connectionState->mutex)> connectionLock(
+                            connectionState->mutex);
+                        if (connectionState->currentTransaction.lock() != nullptr)
+                        { return; }
+                        // connectionState->broken = true;
+                        // impl->persistentConnections->DropConnection(brokerId, connectionState);
+                    },
+                    impl->timeKeeper->GetCurrentTime() + impl->inactivityInterval);
+            };
+        } else
+        { impl_->persistentConnections->DropConnection(brokerId, connectionState); }
+
         transaction->packetID = impl_->nextPacketId();
         auto packet =
             PacketsBuilder::buildSubscribePacket(transaction->packetID, topics, properties);
@@ -1525,8 +1608,9 @@ namespace MqttV5
         return transaction;
     }
 
-    auto MqttClient::Publish(const std::string topic, const std::string payload, const bool retain,
-                             const QoSDelivery qos, const uint16_t packetID, Properties* properties)
+    auto MqttClient::Publish(const std::string& brokerId, const std::string topic,
+                             const std::string payload, const bool retain, const QoSDelivery qos,
+                             const uint16_t packetID, Properties* properties)
         -> std::shared_ptr<MqttClient::Transaction> {
         const auto transaction = std::make_shared<TransactionImpl>();
         if (impl_->connectionState.lock()->broken)
@@ -1535,7 +1619,7 @@ namespace MqttV5
                 0, "Connection: State %d", Transaction::State::NetworkError);
             return transaction;
         }
-        transaction->packetID = impl_->nextPacketId();
+        transaction->packetID = packetID;
         impl_->state = ClientState::Publishing;
         Utf8::Utf8 utf8;
         const auto utf8Payload = utf8.Encode(Utf8::AsciiToUnicode(payload));

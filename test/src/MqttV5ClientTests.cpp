@@ -353,8 +353,9 @@ TEST_F(MqttV5ClientTests, SimpleConnectThenConnAckOk_test) {
     WillMessage willMsg;
     willMsg.topicName = "will/topic";
     willMsg.payload = will;
-    auto transaction = client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr,
-                                         &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    auto transaction =
+        client->ConnectTo("broker.test", "broker.test", 1883, false, true, 60, nullptr, nullptr,
+                          &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
     ASSERT_NE(conn(), nullptr) << "Trasport Layer don't create the connection object";
 
     const auto& connection = conn();
@@ -399,8 +400,9 @@ TEST_F(MqttV5ClientTests, SubscribeSingleTopicSendsPacket_test) {
     willMsg.topicName = "will/topic";
     willMsg.payload = will;
 
-    auto transaction = client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr,
-                                         &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    auto transaction =
+        client->ConnectTo("broker.test", "broker.test", 1883, false, true, 60, nullptr, nullptr,
+                          &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
     ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
     const auto& connection = conn();
     // std::weak_ptr<MqttClient::Transaction> weakTransaction = transaction;
@@ -431,8 +433,9 @@ TEST_F(MqttV5ClientTests, SubscribeSingleTopicSendsPacket_test) {
 
     EXPECT_EQ(MqttClient::Transaction::State::Success, transaction->transactionState);
 
-    auto subTransaction = client->Subscribe("sensors/+/temp", RetainHandling::NoRetainedMessage,
-                                            false, MqttV5::QoSDelivery::AtLeastOne, true, &props);
+    auto subTransaction =
+        client->Subscribe("broker.test", "sensors/+/temp", RetainHandling::NoRetainedMessage, false,
+                          MqttV5::QoSDelivery::AtLeastOne, true, &props);
 
     ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, subTransaction->transactionState);
     ASSERT_FALSE(connection->outgoing.empty());
@@ -457,8 +460,9 @@ TEST_F(MqttV5ClientTests, SubscribeSubAckSuccessGarantedQos1_test) {
     willMsg.topicName = "will/topic";
     willMsg.payload = will;
 
-    auto transaction = client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr,
-                                         &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    auto transaction =
+        client->ConnectTo("broker.test", "broker.test", 1883, false, true, 60, nullptr, nullptr,
+                          &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
     ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
     const auto& connection = conn();
     ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, transaction->transactionState);
@@ -482,8 +486,9 @@ TEST_F(MqttV5ClientTests, SubscribeSubAckSuccessGarantedQos1_test) {
     ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
     EXPECT_EQ(MqttClient::Transaction::State::Success, transaction->transactionState);
 
-    auto subTransaction = client->Subscribe("sensors/+/temp", RetainHandling::NoRetainedMessage,
-                                            false, MqttV5::QoSDelivery::AtLeastOne, true, &props);
+    auto subTransaction =
+        client->Subscribe("broker.test", "sensors/+/temp", RetainHandling::NoRetainedMessage, false,
+                          MqttV5::QoSDelivery::AtLeastOne, true, &props);
     ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, subTransaction->transactionState);
 
     auto subAckPack = PacketsBuilder::buildSubAckPacket(1, ReasonCode::GrantedQoS1, &props);
@@ -520,8 +525,9 @@ TEST_F(MqttV5ClientTests, SubscribeSubAckFailureNotAuthorized_test) {
     willMsg.topicName = "will/topic";
     willMsg.payload = will;
 
-    auto transaction = client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr,
-                                         &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    auto transaction =
+        client->ConnectTo("broker.test", "broker.test", 1883, false, true, 60, nullptr, nullptr,
+                          &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
     ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
     const auto& connection = conn();
     ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, transaction->transactionState);
@@ -545,8 +551,9 @@ TEST_F(MqttV5ClientTests, SubscribeSubAckFailureNotAuthorized_test) {
     ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
     EXPECT_EQ(MqttClient::Transaction::State::Success, transaction->transactionState);
 
-    auto subTransaction = client->Subscribe("sensors/+/temp", RetainHandling::NoRetainedMessage,
-                                            false, MqttV5::QoSDelivery::AtLeastOne, true, &props);
+    auto subTransaction =
+        client->Subscribe("broker.test", "sensors/+/temp", RetainHandling::NoRetainedMessage, false,
+                          MqttV5::QoSDelivery::AtLeastOne, true, &props);
     ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, subTransaction->transactionState);
 
     auto subAckPack = PacketsBuilder::buildSubAckPacket(1, ReasonCode::NotAuthorized, &props);
@@ -583,8 +590,9 @@ TEST_F(MqttV5ClientTests, SubscribeMultiTopicsList_test) {
     willMsg.topicName = "will/topic";
     willMsg.payload = will;
 
-    auto transaction = client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr,
-                                         &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    auto transaction =
+        client->ConnectTo("broker.test", "broker.test", 1883, false, true, 60, nullptr, nullptr,
+                          &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
     ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
     const auto& connection = conn();
     ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult, transaction->transactionState);
@@ -614,7 +622,7 @@ TEST_F(MqttV5ClientTests, SubscribeMultiTopicsList_test) {
                                      true, MqttV5::QoSDelivery::AtLeastOne);
 
     topic1->append(topic2);
-    auto multiSubTransactions = client->Subscribe(topic1, &props);
+    auto multiSubTransactions = client->Subscribe("broker.test", topic1, &props);
 
     ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult,
               multiSubTransactions->transactionState);
@@ -652,8 +660,9 @@ TEST_F(MqttV5ClientTests, UnsubscribeThenUnsubAck_test) {
     WillMessage willMsg;
     willMsg.topicName = "will/topic";
     willMsg.payload = will;
-    auto transaction = client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr,
-                                         &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
+    auto transaction =
+        client->ConnectTo("broker.test", "broker.test", 1883, false, true, 60, nullptr, nullptr,
+                          &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
     ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
     const auto& connection = conn();
     auto topic1 = new UnsubscribeTopic("sensors/+/temp");
@@ -697,13 +706,13 @@ TEST_F(MqttV5ClientTests, PublishQoS1ThenPubAckTransaction_test) {
     willMsg.topicName = "will/topic";
     willMsg.payload = will;
     auto connectTransaction =
-        client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr, &willMsg,
-                          MqttV5::QoSDelivery::AtLeastOne, false, &props);
+        client->ConnectTo("broker.test", "broker.test", 1883, false, true, 60, nullptr, nullptr,
+                          &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
     ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
     const auto& connection = conn();
     uint16_t packetID = 1;
-    auto publishTransaction =
-        client->Publish("sensors/+/temp", "37", false, QoSDelivery::AtLeastOne, packetID, &props);
+    auto publishTransaction = client->Publish("broker.test", "sensors/+/temp", "37", false,
+                                              QoSDelivery::AtLeastOne, packetID, &props);
     ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult,
               publishTransaction->transactionState);
     ASSERT_FALSE(connection->outgoing.empty());
@@ -746,13 +755,13 @@ TEST_F(MqttV5ClientTests, PublishQoS2ThenPubRecPubRelPubComTransactions_test) {
     willMsg.topicName = "will/topic";
     willMsg.payload = will;
     auto connectTransaction =
-        client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr, &willMsg,
-                          MqttV5::QoSDelivery::AtLeastOne, false, &props);
+        client->ConnectTo("broker.test", "broker.test", 1883, false, true, 60, nullptr, nullptr,
+                          &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
     ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
     const auto& connection = conn();
     uint16_t packetID = 1;
-    auto publishTransaction =
-        client->Publish("sensors/+/temp", "37", false, QoSDelivery::ExactlyOne, packetID, &props);
+    auto publishTransaction = client->Publish("broker.test", "sensors/+/temp", "37", false,
+                                              QoSDelivery::ExactlyOne, packetID, &props);
     ASSERT_EQ(MqttClient::Transaction::State::WaitingForResult,
               publishTransaction->transactionState);
     const auto publish = connection->LastOutgoing();
@@ -806,8 +815,8 @@ TEST_F(MqttV5ClientTests, HandlePublishQos1_test) {
     willMsg.topicName = "will/topic";
     willMsg.payload = will;
     auto connectTransaction =
-        client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr, &willMsg,
-                          MqttV5::QoSDelivery::AtLeastOne, false, &props);
+        client->ConnectTo("broker.test", "broker.test", 1883, false, true, 60, nullptr, nullptr,
+                          &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
     ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
     const auto& connection = conn();
     Utf8::Utf8 utf;
@@ -847,8 +856,8 @@ TEST_F(MqttV5ClientTests, HandlePublishQos2_test) {
     willMsg.topicName = "will/topic";
     willMsg.payload = will;
     auto connectTransaction =
-        client->ConnectTo("broker.test", 1883, false, true, 60, nullptr, nullptr, &willMsg,
-                          MqttV5::QoSDelivery::AtLeastOne, false, &props);
+        client->ConnectTo("broker.test", "broker.test", 1883, false, true, 60, nullptr, nullptr,
+                          &willMsg, MqttV5::QoSDelivery::AtLeastOne, false, &props);
     ASSERT_NE(conn(), nullptr) << "Transport Layer dont create the connection object";
     const auto& connection = conn();
     Utf8::Utf8 utf;
