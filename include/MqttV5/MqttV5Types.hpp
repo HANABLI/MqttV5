@@ -15,6 +15,7 @@
 #include <vector>
 #include <string>
 #include <string_view>
+#include <cstring>
 #include "MqttV5Constants.hpp"
 #include "MqttV5ISerializable.hpp"
 
@@ -244,7 +245,7 @@ namespace MqttV5
             uint32_t getSerializedSize() const override { return size; }
 
             uint32_t serialize(uint8_t* buffer) override {
-                std::memcpy(buffer, raw, size);
+                memcpy(buffer, raw, size);
                 return size;  // Retourne la taille totale des données sérialisées // Return the
                               // size of the varint
             }                 //!< Serialize the varint into the buffer
@@ -291,8 +292,8 @@ namespace MqttV5
                 if (!buffer)
                     return BadData;
                 uint16_t networkSize = BigEndian((uint16_t)size);
-                std::memcpy(buffer, &networkSize, sizeof(networkSize));  // Copy size
-                std::memcpy(buffer + sizeof(networkSize), data,
+                memcpy(buffer, &networkSize, sizeof(networkSize));  // Copy size
+                memcpy(buffer + sizeof(networkSize), data,
                             size);  // Copy string data
                 return (uint32_t)size + 2;
             }
@@ -301,13 +302,13 @@ namespace MqttV5
                 if (bufferSize < sizeof(uint16_t))
                     return NotEnoughData;  // Not enough data for size
                 uint16_t networkSize = 0;
-                std::memcpy(&networkSize, buffer, sizeof(networkSize));
+                memcpy(&networkSize, buffer, sizeof(networkSize));
                 size = BigEndian(networkSize);  // Read size from buffer
                 if (bufferSize < size + sizeof(uint16_t))
                     return NotEnoughData;                            // Not enough data for content
                 delete[] data;                                       // Free existing memory
                 data = new uint8_t[size];                            // Allocate new memory
-                std::memcpy(data, buffer + sizeof(uint16_t), size);  // Copy string data
+                memcpy(data, buffer + sizeof(uint16_t), size);  // Copy string data
                 return (uint32_t)size + 2;
             }
 
@@ -328,19 +329,19 @@ namespace MqttV5
             DynamicString(const char* str) {
                 size = (uint8_t)strlen(str);   // Get the size of the string
                 data = new uint8_t[size];      // Allocate memory for the string
-                std::memcpy(data, str, size);  // Copy the string to the data
+                memcpy(data, str, size);  // Copy the string to the data
             }                                  //!< Constructor for the DynamicString class
 
             DynamicString(const std::string& str) {
                 size = (uint8_t)str.length();          // Get the size of the string
                 data = new uint8_t[size];              // Allocate memory for the string
-                std::memcpy(data, str.c_str(), size);  // Copy the string to the data
+                memcpy(data, str.c_str(), size);  // Copy the string to the data
             }                                          //!< Constructor for the DynamicString class
 
             DynamicString(const DynamicString& other) {
                 size = other.size;                    // Get the size of the string
                 data = new uint8_t[size];             // Allocate memory for the string
-                std::memcpy(data, other.data, size);  // Copy the string to the data
+                memcpy(data, other.data, size);  // Copy the string to the data
             }  //!< Copy constructor for the DynamicString class
 
             ~DynamicString() {
@@ -351,7 +352,7 @@ namespace MqttV5
             bool operator==(const DynamicString& other) const {
                 if (size != other.size)
                     return false;                                 // The sizes are different
-                return std::memcmp(data, other.data, size) == 0;  // Compare the data
+                return memcmp(data, other.data, size) == 0;  // Compare the data
             }  //!< Compare the strings for equality
 
             bool operator!=(const DynamicString& other) const {
@@ -365,7 +366,7 @@ namespace MqttV5
                         delete[] data;                    // Delete the data if it is not null
                     size = other.size;                    // Get the size of the string
                     data = new uint8_t[size];             // Allocate memory for the string
-                    std::memcpy(data, other.data, size);  // Copy the string to the data
+                    memcpy(data, other.data, size);  // Copy the string to the data
                 }
                 return *this;  // Return the string
             }
@@ -373,7 +374,7 @@ namespace MqttV5
             void from(const char* str, size_t size = 0) {
                 size = size ? size : (strlen(str) + 1);  // Get the size of the string
                 data = (uint8_t*)malloc(size);           // Allocate memory for the string
-                std::memcpy(data, str, size);            // Copy the string to the data
+                memcpy(data, str, size);            // Copy the string to the data
                 data[size - 1] = '\0';                   // Add the null terminator to the string
             }  //!< Convert the string from a C-style string
         };
@@ -475,8 +476,8 @@ namespace MqttV5
                 if (!buffer)
                     return BadData;  // Invalid buffer
                 uint16_t networkSize = BigEndian(size);
-                std::memcpy(buffer, &networkSize, sizeof(networkSize));  // Copy size
-                std::memcpy(buffer + sizeof(networkSize), data, size);   // Copy data
+                memcpy(buffer, &networkSize, sizeof(networkSize));  // Copy size
+                memcpy(buffer + sizeof(networkSize), data, size);   // Copy data
                 return sizeof(networkSize) + size;
             }  //!< Serialize the dynamic string view into the buffer
 
@@ -484,7 +485,7 @@ namespace MqttV5
                 if (bufferSize < sizeof(uint16_t))
                     return NotEnoughData;  // Not enough data
                 uint16_t networkSize = 0;
-                std::memcpy(&networkSize, buffer, sizeof(networkSize));
+                memcpy(&networkSize, buffer, sizeof(networkSize));
                 size = BigEndian(networkSize);  // Swap the length to network order
                 if (bufferSize < size + sizeof(uint16_t))
                     return NotEnoughData;  // Not enough data
@@ -581,8 +582,8 @@ namespace MqttV5
                 if (!buffer)
                     return BadData;  // Invalid buffer
                 uint16_t networkSize = BigEndian((uint16_t)size);
-                std::memcpy(buffer, &networkSize, sizeof(networkSize));  // Copy size
-                std::memcpy(buffer + sizeof(networkSize), data, size);   // Copy data
+                memcpy(buffer, &networkSize, sizeof(networkSize));  // Copy size
+                memcpy(buffer + sizeof(networkSize), data, size);   // Copy data
                 return sizeof(networkSize) + size;
             }  //!< Serialize the dynamic binary data into the buffer
 
@@ -591,14 +592,14 @@ namespace MqttV5
                     return NotEnoughData;
 
                 uint16_t netSize;
-                std::memcpy(&netSize, buffer, sizeof(uint16_t));
+                memcpy(&netSize, buffer, sizeof(uint16_t));
                 size = BigEndian(netSize);
 
                 if (bufferSize < size + sizeof(uint16_t))
                     return NotEnoughData;
 
                 data = new uint8_t[size];
-                std::memcpy(data, buffer + sizeof(uint16_t), size);
+                memcpy(data, buffer + sizeof(uint16_t), size);
 
                 return sizeof(uint16_t) + size;
             }
@@ -610,7 +611,7 @@ namespace MqttV5
                         delete[] data;         // Delete the data if it is not null
                     size = other.size;         // Get the size of the dynamic binary data
                     data = new uint8_t[size];  // Allocate memory for the dynamic binary data
-                    std::memcpy(data, other.data,
+                    memcpy(data, other.data,
                                 size);  // Copy the dynamic binary data to the data
                 }
                 return *this;  // Return the dynamic binary data
@@ -633,7 +634,7 @@ namespace MqttV5
                 if (size > 0 && other.data)
                 {
                     data = new uint8_t[size];
-                    std::memcpy(data, other.data, size);
+                    memcpy(data, other.data, size);
                 }
             }
 
@@ -654,7 +655,7 @@ namespace MqttV5
                 if (size > 0 && src)
                 {
                     // data = new uint8_t[size];
-                    std::memcpy(data, src, size);
+                    memcpy(data, src, size);
                 }
             }
 
@@ -680,8 +681,8 @@ namespace MqttV5
                 if (!buffer)
                     return BadData;
                 uint16_t networkSize = BigEndian((uint16_t)size);
-                std::memcpy(buffer, &networkSize, sizeof(networkSize));  // Copy size
-                std::memcpy(buffer + sizeof(networkSize), data, size);   // Copy binary data
+                memcpy(buffer, &networkSize, sizeof(networkSize));  // Copy size
+                memcpy(buffer + sizeof(networkSize), data, size);   // Copy binary data
                 return getSerializedSize();
             }
 
@@ -713,7 +714,7 @@ namespace MqttV5
             uint32_t serialize(uint8_t* buffer) override {
                 if (!buffer || !data)
                     return BadData;
-                std::memcpy(buffer, data, size);
+                memcpy(buffer, data, size);
                 return size;  // Return the size of the mapped varint
             }                 //!< Serialize the mapped varint into the buffer
 

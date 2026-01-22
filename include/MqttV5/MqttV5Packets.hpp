@@ -1259,13 +1259,15 @@ namespace MqttV5
             return header.getSerializedSize();  //!< Get the size of the packet
         }                                       //!< Get the size of the packet
         uint32_t serialize(uint8_t* buffer) override {
-            return header.serialize(buffer);  // Serialize the fixed header
-        }                                     //!< Serialize the packet into the buffer
+            uint32_t offset = header.serialize(buffer);
+            offset += remainingLength.serialize(buffer + offset);
+            return offset;  // Serialize the fixed header
+        }                   //!< Serialize the packet into the buffer
         uint32_t deserialize(const uint8_t* buffer, uint32_t bufferSize) override {
             uint32_t offset = header.deserialize(buffer, bufferSize);
             offset += remainingLength.deserialize(buffer + offset, bufferSize - offset);
             return offset;  // Deserialize the fixed header
-        }  //!< Deserialize the packet from the buffer
+        }                   //!< Deserialize the packet from the buffer
 
         bool checkImpl() const override {
             if (header.isValid())
