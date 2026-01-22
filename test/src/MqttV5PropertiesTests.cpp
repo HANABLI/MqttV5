@@ -5,6 +5,7 @@
  * @author Hatem Nabli
  * copyright © 2025 by Hatem Nabli
  */
+#include <cstring>
 #include <MqttV5/MqttV5Properties.hpp>
 #include <MqttV5/MqttV5Constants.hpp>
 #include <MqttV5/MqttV5Types.hpp>
@@ -83,7 +84,7 @@ TEST(MqttV5PropertiesTest, PropertyChainCreationAndValidation) {
     props.addProperty(ServerReference_prop::create(DynamicString("server")));
     props.addProperty(AuthenticationMethod_prop::create(DynamicString("auth")));
     props.addProperty(AuthenticationData_prop::create(
-        DynamicBinaryData(reinterpret_cast<uint8_t*>(_strdup("authdata")), 8)));
+        DynamicBinaryData(reinterpret_cast<uint8_t*>(strdup("authdata")), 8)));
     props.addProperty(ReasonString_prop::create(DynamicString("reason")));
     props.addProperty(TopicAlias_prop::create(100));
     props.addProperty(TopicAliasMaximum_prop::create(200));

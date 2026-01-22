@@ -94,7 +94,7 @@ namespace MqttV5
         FixedFieldWithRemainingLength(GenericTypeBase& v, uint32_t length) :
             FixedFieldGeneric(v),
             remainingLength(length) {}  //!< Constructor for the FixedFieldWithRemainingLength class
-        void setRemainingLength(uint32_t length) {
+        void setRemainingLength(uint32_t length) override {
             remainingLength = length;  //!< Set the remaining length of the packet
         }                              //!< Set the remaining length of the packet
         uint32_t deserialize(const uint8_t* buffer, uint32_t bufferSize) override {
@@ -667,7 +667,7 @@ namespace MqttV5
         WillMessage* willMessage;
 
         void setWillMessage(WillMessage* msg) { willMessage = msg; }
-        void setFlags(const FixedFieldGeneric& flags) {
+        void setFlags(const FixedFieldGeneric& flags) override {
             fixedHeader =
                 (FixedField<ControlPacketType::CONNECT>*)&flags;  //!< Set the fixed header
         }  //!< Set the flags for the connect packet
@@ -785,7 +785,7 @@ namespace MqttV5
         uint8_t* data;      //!< Pointer to the data
         uint32_t dataSize;  //!< Size of the data
 
-        inline void setExpectedPacketSize(const uint32_t size) {
+        inline void setExpectedPacketSize(const uint32_t size) override {
             dataSize = size;  //!< Set the size of the data
         }                     //!< Set the size of the data
 
@@ -988,7 +988,9 @@ namespace MqttV5
         uint32_t expectedSize;
 
     public:
-        inline void setExpectedPacketSize(uint32_t sizeInBytes) { expectedSize = sizeInBytes; }
+        inline void setExpectedPacketSize(uint32_t sizeInBytes) override {
+            expectedSize = sizeInBytes;
+        }
         uint32_t getSerializedSize() const override {
             return topicList ? topicList->getSerializedSize() : 0;
         }  //!< Get the size of the payload

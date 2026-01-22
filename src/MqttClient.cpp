@@ -12,7 +12,6 @@
 #include <Utf8/Utf8.hpp>
 #include <TimeTracking/TimeTracking.hpp>
 #include <StringUtils/StringUtils.hpp>
-#include <vcruntime.h>
 #include <string>
 #include <memory>
 #include <sstream>
