@@ -130,7 +130,7 @@ namespace MqttV5
         //     return true;
         // }  //!< Check the implementation of the object
 
-        PropertyCore* clone() const { return new Property((PropertyId)id, value.value, true); }
+        PropertyCore* clone() const override { return new Property((PropertyId)id, value.value, true); }
 
         Property(const PropertyId id = BadProperty, T val = 0, const bool heap = false) :
             value(val),
@@ -146,7 +146,7 @@ namespace MqttV5
     {
         GenericType<uint8_t> value;  //!< The value of the property
 
-        PropertyCore* clone() const { return new Property((PropertyId)id, value.value, true); }
+        PropertyCore* clone() const override { return new Property((PropertyId)id, value.value, true); }
         Property(const PropertyId id = BadProperty, uint8_t val = 0, const bool heap = false) :
             value(val),
             PropertyCoreImpl(id, value, heap) {}  //!< Constructor for the Property class
@@ -180,7 +180,7 @@ namespace MqttV5
             offset += value.deserialize(buffer + offset, bufferSize);  // Deserialize the value
             return offset;  // Return the size of the property
         }                   //!< Deserialize the object from the buffer
-        PropertyCore* clone() const { return new Property((PropertyId)id, value, true); }
+        PropertyCore* clone() const override { return new Property((PropertyId)id, value, true); }
         // Constructor accepting a const reference
         Property(const PropertyId id = BadProperty, const DynamicString& val = DynamicString(),
                  bool heap = false) :
