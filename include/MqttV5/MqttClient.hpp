@@ -361,8 +361,8 @@ namespace MqttV5
          *      This is the password to use for authentication.
          */
         std::shared_ptr<Transaction> ConnectTo(
-            const std::string& brokerHost, const uint16_t port, bool useTLS = false,
-            const bool cleanSession = true, const uint16_t keepAlive = 300,
+            const std::string& brokerId, const std::string& brokerHost, const uint16_t port,
+            bool useTLS = false, const bool cleanSession = true, const uint16_t keepAlive = 300,
             const char* userName = nullptr, const DynamicBinaryData* password = nullptr,
             WillMessage* willMessage = nullptr, const QoSDelivery willQoS = QoSDelivery::AtLeastOne,
             const bool willRetain = false, Properties* properties = nullptr);
@@ -396,26 +396,26 @@ namespace MqttV5
                                                   Properties* properties = nullptr) override;
 
         std::shared_ptr<Transaction> Subscribe(
-            const char* topic,
+            const std::string& brokerId, const char* topic,
             const RetainHandling retainHandling =
                 RetainHandling::GetRetainedMessageAtSubscriptionTime,
             const bool withAutoFeedBack = false,
             const QoSDelivery maxAcceptedQos = QoSDelivery::ExactlyOne,
             const bool retainAsPublished = true, Properties* properties = nullptr) override;
 
-        std::shared_ptr<Transaction> Subscribe(SubscribeTopic* topics,
+        std::shared_ptr<Transaction> Subscribe(const std::string& brokerId, SubscribeTopic* topics,
                                                Properties* properties = nullptr) override;
 
         std::shared_ptr<Transaction> Unsubscribe(UnsubscribeTopic* topics,
                                                  Properties* properties = nullptr) override;
 
-        std::shared_ptr<Transaction> Publish(const std::string topic, const std::string payload,
-                                             const bool retain = false,
+        std::shared_ptr<Transaction> Publish(const std::string& brokerId, const std::string topic,
+                                             const std::string payload, const bool retain = false,
                                              const QoSDelivery QoS = QoSDelivery::AtMostOne,
                                              const uint16_t packetID = 0,
                                              Properties* properties = nullptr) override;
 
-        std::shared_ptr<Transaction> Ping(const std::string& brokerHost, const uint16_t port);
+        std::shared_ptr<Transaction> Ping(const std::string& brokerId);
         /**
          * This is the type of structure that contains the private
          * properties of the instance. It is defined in the implementation

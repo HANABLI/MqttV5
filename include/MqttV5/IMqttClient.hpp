@@ -120,12 +120,10 @@ namespace MqttV5
          * @param[in] properties
          *      This is the properties to use for the subscription.
          */
-        virtual std::shared_ptr<Transaction> Subscribe(const char* topic,
-                                                       const RetainHandling retainHandling,
-                                                       const bool withAutoFeedBack,
-                                                       const QoSDelivery maxAcceptedQos,
-                                                       const bool retainAsPublished,
-                                                       Properties* properties) = 0;
+        virtual std::shared_ptr<Transaction> Subscribe(
+            const std::string& brokerId, const char* topic, const RetainHandling retainHandling,
+            const bool withAutoFeedBack, const QoSDelivery maxAcceptedQos,
+            const bool retainAsPublished, Properties* properties) = 0;
         /**
          * This method subscribes to the given topics.
          *
@@ -134,7 +132,8 @@ namespace MqttV5
          * @param[in] properties
          *      This is the properties to use for the subscription.
          */
-        virtual std::shared_ptr<Transaction> Subscribe(SubscribeTopic* topics,
+        virtual std::shared_ptr<Transaction> Subscribe(const std::string& brokerId,
+                                                       SubscribeTopic* topics,
                                                        Properties* properties) = 0;
         /**
          * This method unsubscribes from the given topics.
@@ -162,7 +161,8 @@ namespace MqttV5
          * @param[in] properties
          *      This is the properties to use for the publication.
          */
-        virtual std::shared_ptr<Transaction> Publish(const std::string topic,
+        virtual std::shared_ptr<Transaction> Publish(const std::string& brokerId,
+                                                     const std::string topic,
                                                      const std::string payload, const bool retain,
                                                      const QoSDelivery QoS, const uint16_t packetID,
                                                      Properties* properties) = 0;
