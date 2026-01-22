@@ -226,7 +226,7 @@ namespace MqttV5
                 return false;  // Invalid size
             return true;
         }  //!< Check the implementation of the object
-        PropertyCore* clone() const { return new Property((PropertyId)id, value, true); }
+        PropertyCore* clone() const override { return new Property((PropertyId)id, value, true); }
         Property(PropertyId id = BadProperty, const DynamicBinaryData& val = DynamicBinaryData(),
                  const bool heap = false) :
             PropertyCore(id, heap), value(val) {}  //!< Constructor for the Property class
@@ -268,7 +268,7 @@ namespace MqttV5
                 return false;  // Invalid size
             return true;
         }  //!< Check the implementation of the object
-        PropertyCore* clone() const { return new Property((PropertyId)id, value, true); }
+        PropertyCore* clone() const override { return new Property((PropertyId)id, value, true); }
         Property(PropertyId id = BadProperty, const DynamicStringPair& val = DynamicStringPair(),
                  const bool heap = false) :
             PropertyCore(id, heap), value(val) {}  //!< Constructor for the Property class
@@ -310,7 +310,7 @@ namespace MqttV5
                 return false;  // Invalid size
             return true;
         }  //!< Check the implementation of the object
-        PropertyCore* clone() const { return new Property((PropertyId)id, value, true); }
+        PropertyCore* clone() const override { return new Property((PropertyId)id, value, true); }
         Property(PropertyId id = BadProperty, const DynamicStringView& val = DynamicStringView(),
                  const bool heap = false) :
             PropertyCore(id, heap), value(val) {}  //!< Constructor for the Property class
@@ -355,7 +355,7 @@ namespace MqttV5
                 return false;  // Invalid size
             return true;
         }  //!< Check the implementation of the object
-        PropertyCore* clone() const { return new Property((PropertyId)id, value, true); }
+        PropertyCore* clone() const override { return new Property((PropertyId)id, value, true); }
         // Constructor accepting a const reference
         Property(const PropertyId id = BadProperty,
                  const DynamicBinaryDataView& val = DynamicBinaryDataView(), bool heap = false) :
@@ -404,7 +404,7 @@ namespace MqttV5
                 return false;  // Invalid size
             return true;
         }  //!< Check the implementation of the object
-        PropertyCore* clone() const { return new Property((PropertyId)id, value, true); }
+        PropertyCore* clone() const override { return new Property((PropertyId)id, value, true); }
         Property(PropertyId id = BadProperty, const MappedVBInt& val = MappedVBInt(),
                  const bool heap = false) :
             PropertyCore(id, heap), value(val) {}  //!< Constructor for the Property class
@@ -450,7 +450,7 @@ namespace MqttV5
             return true;
         }  //!< Check the implementation of the object
 
-        PropertyCore* clone() const { return new Property((PropertyId)id, value, true); }
+        PropertyCore* clone() const override { return new Property((PropertyId)id, value, true); }
         Property(PropertyId id = BadProperty,
                  const DynamicStringPairView& val = DynamicStringPairView(),
                  const bool heap = false) :
@@ -496,7 +496,7 @@ namespace MqttV5
                 return false;  // Invalid size
             return true;
         }  //!< Check the implementation of the object
-        PropertyCore* clone() const { return new Property((PropertyId)id, value, true); }
+        PropertyCore* clone() const override { return new Property((PropertyId)id, value, true); }
         Property(PropertyId id = BadProperty, const VBInt& val = VBInt(), const bool heap = false) :
             PropertyCore(id, heap), value(val) {}  //!< Constructor for the Property class
 
