@@ -200,7 +200,7 @@ namespace MqttV5
     };
 
     /** The possible value for retain handling in subscribe packet */
-    enum RetainHandling
+    enum RetainHandling : unsigned int
     {
         GetRetainedMessageAtSubscriptionTime =
             0,  //!< Get the retained message at subscription time
