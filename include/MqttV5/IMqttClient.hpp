@@ -17,7 +17,7 @@ namespace MqttV5
     public:
         struct Transaction
         {
-            enum class State : int
+            enum class State
             {
                 Success = 0,            //!< The method succeeded as expected
                 TimedOut = -2,          //!< The operation timed out
