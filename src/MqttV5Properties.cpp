@@ -7,6 +7,8 @@
  */
 
 #include "MqttV5/MqttV5Properties.hpp"
+#include <stdexcept>
+#include <iostream>
 
 // #include "MqttV5Constants.hpp"
 namespace MqttV5
@@ -377,8 +379,8 @@ namespace MqttV5
     }                  //!< Assignment operator for the Properties class
     uint32_t Properties::getSerializedSize() const {
         uint32_t size = 0;
-        PropertyCore* current = impl_->head;    
-        size += impl_->length.getSerializedSize(); 
+        PropertyCore* current = impl_->head;
+        size += impl_->length.getSerializedSize();
         while (current)
         {
             size += current->getSerializedSize();  // Get the size of the serialized object
@@ -388,70 +390,92 @@ namespace MqttV5
     }                 //!< Get the size of the serialized object
 
     uint32_t Properties::serialize(uint8_t* buffer) {
-        if (!buffer)
-            throw std::invalid_argument("Buffer cannot be null.");
-        uint32_t offset = 0;
-        offset += impl_->length.serialize(buffer);
-        PropertyCore* current = impl_->head;
-        while (current)
+        try
         {
-            offset += current->serialize(buffer + offset);  // Serialize the object into the buffer
-            current = current->next;                        // Move to the next property
+            if (!buffer)
+                throw std::invalid_argument("Buffer cannot be null.");
+            uint32_t offset = 0;
+            offset += impl_->length.serialize(buffer);
+            PropertyCore* current = impl_->head;
+            while (current)
+            {
+                offset +=
+                    current->serialize(buffer + offset);  // Serialize the object into the buffer
+                current = current->next;                  // Move to the next property
+            }
+            return offset;  //!< Return the size of the properties class
         }
-        return offset;  //!< Return the size of the properties class
-    }                   //!< Serialize the object into the buffer
+        catch (const std::invalid_argument& e)
+        {
+            std::cout << e.what() << '\n';
+            return NULL;
+        }
+    }  //!< Serialize the object into the buffer
 
     uint32_t Properties::deserialize(const uint8_t* buffer, uint32_t bufferSize) {
-        if (!buffer)
-            throw std::invalid_argument("buffer is null");
-
-        clear();
-        registerAllProperties();  // s’assurer que tous les types sont enregistrés
-
-        uint32_t offset = 0;
-        offset += impl_->length.deserialize(buffer, bufferSize);
-        if ((uint32_t)impl_->length > bufferSize - impl_->length.getSerializedSize())
-            return NotEnoughData;
-        auto propSize = (uint32_t)impl_->length;
-        while (propSize)
+        try
         {
-            PropertyId id = static_cast<PropertyId>(buffer[offset]);
+            if (!buffer)
+                throw std::invalid_argument("buffer is null");
 
-            auto* prop = DeserializationRegistry::getInstance().deserialize(id);
-            if (!prop)
-                throw std::runtime_error("Unknown PropertyId during deserialization");
+            clear();
+            registerAllProperties();  // s’assurer que tous les types sont enregistrés
 
-            uint32_t readSize = prop->deserialize(buffer + offset, bufferSize - offset);
-            if (readSize == 0)
+            uint32_t offset = 0;
+            offset += impl_->length.deserialize(buffer, bufferSize);
+            if ((uint32_t)impl_->length > bufferSize - impl_->length.getSerializedSize())
+                return NotEnoughData;
+            auto propSize = (uint32_t)impl_->length;
+            while (propSize)
             {
-                delete prop;
-                throw std::runtime_error("Deserialization failed for property");
+                PropertyId id = static_cast<PropertyId>(buffer[offset]);
+
+                auto* prop = DeserializationRegistry::getInstance().deserialize(id);
+                if (!prop)
+                    throw std::runtime_error("Unknown PropertyId during deserialization");
+
+                uint32_t readSize = prop->deserialize(buffer + offset, bufferSize - offset);
+                if (readSize == 0)
+                {
+                    delete prop;
+                    throw std::runtime_error("Deserialization failed for property");
+                }
+
+                addProperty(prop);
+                propSize -= readSize;
+                offset += readSize;
             }
 
-            addProperty(prop);
-            propSize -= readSize;
-            offset += readSize;
+            return offset;
         }
-
-        return offset;
+        catch (const std::exception& e)
+        {
+            std::cout << e.what() << '\n';
+            return NULL;
+        }
     }
 
     void Properties::addProperty(PropertyCore* property) {
-        if (property == nullptr)
-            throw std::invalid_argument("Property cannot be null.");
-        property->next = nullptr;  // Sécurité : couper toute chaîne existante
-        VBInt l((uint32_t)impl_->length + property->getSerializedSize());
+        try
+        {
+            if (property == nullptr)
+                throw std::invalid_argument("Property cannot be null.");
+            property->next = nullptr;  // Sécurité : couper toute chaîne existante
+            VBInt l((uint32_t)impl_->length + property->getSerializedSize());
 
-        if (!impl_->head)
-        {
-            impl_->head = property;
-            impl_->reference = property;
-        } else
-        {
-            impl_->reference->next = property;
-            impl_->reference = property;
+            if (!impl_->head)
+            {
+                impl_->head = property;
+                impl_->reference = property;
+            } else
+            {
+                impl_->reference->next = property;
+                impl_->reference = property;
+            }
+            impl_->length = l;
         }
-        impl_->length = l;
+        catch (const std::invalid_argument& e)
+        { std::cout << e.what() << '\n'; }
     }  //!< Add a property to the properties class
 
     PropertyCore* Properties::getProperty(PropertyId id) const {
