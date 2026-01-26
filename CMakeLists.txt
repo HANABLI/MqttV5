@@ -28,7 +28,7 @@ add_library(${this} STATIC ${Sources} ${Headers})
 set_target_properties(${this} PROPERTIES
     FOLDER Libraries
 )
-if(WIN32)
+if(MSVC)
     target_compile_options(${this} PRIVATE /EHsc)
 else()
     target_compile_options(${this} PRIVATE -fexceptions)
