@@ -28,7 +28,11 @@ add_library(${this} STATIC ${Sources} ${Headers})
 set_target_properties(${this} PROPERTIES
     FOLDER Libraries
 )
-
+if(WIN32)
+    target_compile_options(${this} PRIVATE /EHsc)
+else()
+    target_compile_options(${this} PRIVATE -fexceptions)
+endif()
 target_include_directories(${this} PUBLIC include)
 target_link_libraries(${this} PUBLIC
     StringUtils
