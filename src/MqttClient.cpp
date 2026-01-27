@@ -931,10 +931,12 @@ namespace MqttV5
             auto pubAckPacket =
                 PacketsBuilder::buildPubAckPacket(packetID, ReasonCode::Success, nullptr);
             auto pubAckPacketSize = pubAckPacket->computePacketSize(true);
-            auto pubAckBuff = new uint8_t[(size_t)pubAckPacketSize];
-            auto pubAckBuffSize = pubAckPacket->serialize(pubAckBuff);
-            std::vector<uint8_t> data(pubAckBuff, pubAckBuff + pubAckBuffSize);
-            connectionState->connection->SendData(data);
+            std::vector<uint8_t> pubAckBuff;
+            pubAckBuff.reserve(static_cast<size_t>(pubAckPacketSize));
+            auto pubAckBuffSize = pubAckPacket->serialize(pubAckBuff.data());
+            if (pubAckBuffSize != pubAckPacketSize)
+            { pubAckBuff.resize(pubAckBuffSize); }
+            connectionState->connection->SendData(pubAckBuff);
             MarkComplete(State::Success, now);
             return;
         } else if (qos == QoSDelivery::ExactlyOne)
@@ -942,10 +944,12 @@ namespace MqttV5
             auto pubRecPacket =
                 PacketsBuilder::buildPubRecPacket(packetID, ReasonCode::Success, nullptr);
             auto pubRecPacketSize = pubRecPacket->computePacketSize(true);
-            auto pubRecBuff = new uint8_t[(size_t)pubRecPacketSize];
-            auto pubRecBuffSize = pubRecPacket->serialize(pubRecBuff);
-            std::vector<uint8_t> data(pubRecBuff, pubRecBuff + pubRecBuffSize);
-            connectionState->connection->SendData(data);
+            std::vector<uint8_t> pubRecBuff;
+            pubRecBuff.resize((size_t)pubRecPacketSize);
+            auto pubRecBuffSize = pubRecPacket->serialize(pubRecBuff.data());
+            if (pubRecPacketSize != pubRecBuffSize)
+            { pubRecBuff.resize(pubRecBuffSize); }
+            connectionState->connection->SendData(pubRecBuff);
             return;
         }
         MarkComplete(State::Success, now);
@@ -1018,10 +1022,12 @@ namespace MqttV5
         { txReason = ReasonCode::PacketIdentifierNotFound; }
         auto packet = PacketsBuilder::buildPubRelPacket(id, txReason, nullptr);
         auto size = packet->computePacketSize(true);
-        auto encodedConnect = new uint8_t[(size_t)size];
-        auto serSize = packet->serialize(encodedConnect);
-        std::vector<uint8_t> data(encodedConnect, encodedConnect + serSize);
-        impl->connectionState.lock()->connection->SendData(data);
+        std::vector<uint8_t> encodedConnect;
+        encodedConnect.reserve((size_t)size);
+        auto serSize = packet->serialize(encodedConnect.data());
+        if (size != serSize)
+        { encodedConnect.resize(serSize); }
+        impl->connectionState.lock()->connection->SendData(encodedConnect);
     }
 
     void TransactionImpl::HandlePubComp(const uint8_t* packetPtr, uint32_t packetSize, double now) {
@@ -1077,10 +1083,12 @@ namespace MqttV5
         auto pubCompPacket =
             PacketsBuilder::buildPubCompPacket(packetID, ReasonCode::Success, nullptr);
         auto pubCompPacketSize = pubCompPacket->computePacketSize(true);
-        auto pubCompBuff = new uint8_t[(size_t)pubCompPacketSize];
-        auto pubCompBuffSize = pubCompPacket->serialize(pubCompBuff);
-        std::vector<uint8_t> data(pubCompBuff, pubCompBuff + pubCompBuffSize);
-        connectionState->connection->SendData(data);
+        std::vector<uint8_t> pubCompBuff;
+        pubCompBuff.reserve(static_cast<size_t>(pubCompPacketSize));
+        auto pubCompBuffSize = pubCompPacket->serialize(pubCompBuff.data());
+        if (pubCompBuffSize != pubCompPacketSize)
+        { pubCompBuff.resize(pubCompBuffSize); }
+        connectionState->connection->SendData(pubCompBuff);
     }
 
     void TransactionImpl::HandlePingResp(const uint8_t* packetPtr, uint32_t packetSize,
@@ -1331,13 +1339,14 @@ namespace MqttV5
         std::vector<uint8_t> encodedConnect;
         auto size = packet->computePacketSize(true);
 
-        encodedConnect.resize(size);
+        encodedConnect.reserve(static_cast<size_t>(size));
         auto packetSize = packet->serialize(encodedConnect.data());
 
         transaction->connectionState = connectionState;
         transaction->impl_ = impl_;
-        auto data = encodedConnect;
-        connectionState->connection->SendData(data);
+        if (size != packetSize)
+        { encodedConnect.resize(packetSize); }
+        connectionState->connection->SendData(encodedConnect);
         transaction->persistConnection = true;
         if (connectionState->broken == false)
         {
@@ -1401,13 +1410,13 @@ namespace MqttV5
         std::vector<uint8_t> encodedPing;
         auto size = packet->computePacketSize(true);
 
-        encodedPing.resize(size);
+        encodedPing.reserve(static_cast<size_t>(size));
         auto packetSize = packet->serialize(encodedPing.data());
-
+        if (size != packetSize)
+        { encodedPing.resize(packetSize); }
         transaction->connectionState = connectionState;
         transaction->impl_ = impl_;
-        auto data = encodedPing;
-        connectionState->connection->SendData(data);
+        connectionState->connection->SendData(encodedPing);
         transaction->persistConnection = true;
         if (connectionState->broken == false)
         {
@@ -1483,13 +1492,14 @@ namespace MqttV5
             transaction->packetID, topic, retainHandling, withAutoFeedBack, maxAcceptedQos,
             retainHandling, properties);
         auto size = packet->computePacketSize(true);
-        uint8_t* encodedConnect = new uint8_t[(size_t)size];
-        auto packetSize = packet->serialize(encodedConnect);
-        std::vector<uint8_t> data(encodedConnect, encodedConnect + packetSize);
-        delete[] encodedConnect;
+        std::vector<uint8_t> encodedConnect;
+        encodedConnect.reserve((size_t)size);
+        auto packetSize = packet->serialize(encodedConnect.data());
+        if (size != packetSize)
+        { encodedConnect.resize(packetSize); }
         transaction->connectionState = impl_->connectionState.lock();
         transaction->impl_ = impl_;
-        impl_->connectionState.lock()->connection->SendData(data);
+        impl_->connectionState.lock()->connection->SendData(encodedConnect);
         transaction->persistConnection = true;
         if (impl_->connectionState.lock()->broken == false)
         {
@@ -1559,13 +1569,14 @@ namespace MqttV5
         auto packet =
             PacketsBuilder::buildSubscribePacket(transaction->packetID, topics, properties);
         auto size = packet->computePacketSize(true);
-        uint8_t* encodedConnect = new uint8_t[(size_t)size];
-        auto packetSize = packet->serialize(encodedConnect);
-        std::vector<uint8_t> data(encodedConnect, encodedConnect + packetSize);
-        delete[] encodedConnect;
+        std::vector<uint8_t> encodedConnect;
+        encodedConnect.reserve((size_t)size);
+        auto packetSize = packet->serialize(encodedConnect.data());
+        if (size != packetSize)
+        { encodedConnect.resize(packetSize); }
         transaction->connectionState = impl_->connectionState.lock();
         transaction->impl_ = impl_;
-        impl_->connectionState.lock()->connection->SendData(data);
+        impl_->connectionState.lock()->connection->SendData(encodedConnect);
         transaction->persistConnection = true;
         if (impl_->connectionState.lock()->broken == false)
         {
@@ -1590,13 +1601,14 @@ namespace MqttV5
         auto packet =
             PacketsBuilder::buildUnsubscribePacket(transaction->packetID, topics, properties);
         auto size = packet->computePacketSize(true);
-        uint8_t* encodedConnect = new uint8_t[(size_t)size];
-        auto packetSize = packet->serialize(encodedConnect);
-        std::vector<uint8_t> data(encodedConnect, encodedConnect + packetSize);
-        delete[] encodedConnect;
+        std::vector<uint8_t> encodedConnect;
+        encodedConnect.reserve((size_t)size);
+        auto packetSize = packet->serialize(encodedConnect.data());
+        if (size != packetSize)
+        { encodedConnect.resize(packetSize); }
         transaction->connectionState = impl_->connectionState.lock();
         transaction->impl_ = impl_;
-        impl_->connectionState.lock()->connection->SendData(data);
+        impl_->connectionState.lock()->connection->SendData(encodedConnect);
         transaction->persistConnection = true;
         if (impl_->connectionState.lock()->broken == false)
         {
@@ -1626,22 +1638,23 @@ namespace MqttV5
                                                          (uint32_t)utf8Payload.size(), qos, retain,
                                                          properties);
         auto size = packet->computePacketSize();
-        uint8_t* encodedConnect = new uint8_t[(size_t)size];
-        auto packetSize = packet->serialize(encodedConnect);
-        std::vector<uint8_t> data(encodedConnect, encodedConnect + packetSize);
+        std::vector<uint8_t> encodedConnect;
+        encodedConnect.reserve(static_cast<size_t>(size));
+        auto packetSize = packet->serialize(encodedConnect.data());
+        if (packetSize != size)
+        { encodedConnect.resize(packetSize); }
         if (qos == QoSDelivery::AtLeastOne)
         {
             impl_->buffers.storeQos1ID(transaction->packetID);
-            impl_->saveQoS(transaction->packetID, data);
+            impl_->saveQoS(transaction->packetID, encodedConnect);
         } else if (qos == QoSDelivery::ExactlyOne)
         {
             impl_->buffers.storeQoS2ID(transaction->packetID);
-            impl_->saveQoS(transaction->packetID, data);
+            impl_->saveQoS(transaction->packetID, encodedConnect);
         }
-        delete[] encodedConnect;
         transaction->connectionState = impl_->connectionState.lock();
         transaction->impl_ = impl_;
-        impl_->connectionState.lock()->connection->SendData(data);
+        impl_->connectionState.lock()->connection->SendData(encodedConnect);
         transaction->persistConnection = true;
         if (impl_->connectionState.lock()->broken == false)
         {

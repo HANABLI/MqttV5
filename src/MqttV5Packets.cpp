@@ -7,6 +7,7 @@
  */
 
 #include "MqttV5/MqttV5Packets.hpp"
+#include <vector>
 
 namespace MqttV5
 {
@@ -95,17 +96,17 @@ namespace MqttV5
 
         if (properties)
         { publishPacket->props.captureProperties(*properties); }
-        uint8_t* payloadBuff = new uint8_t[payload.size()];
-        std::copy(payload.begin(), payload.end(), payloadBuff);
+        std::vector<uint8_t> payloadBuff;
+        payloadBuff.reserve(payload.size());
+        std::copy(payload.begin(), payload.end(), payloadBuff.data());
         publishPacket->header.setRetained(retain);
         publishPacket->header.setDuplicated(false);
         publishPacket->header.setQos(qos);
         publishPacket->fixedVariableHeader.packetID = packetID;
         publishPacket->fixedVariableHeader.topicName = topicName;
         publishPacket->payload.setExpectedPacketSize(payloadSize);
-        publishPacket->payload.deserialize(payloadBuff, payloadSize);
+        publishPacket->payload.deserialize(payloadBuff.data(), payloadSize);
         publishPacket->computePacketSize(true);
-        delete[] payloadBuff;
         return publishPacket;
     }
 
@@ -173,9 +174,10 @@ namespace MqttV5
                                                                  Properties* properties) {
         SubAckPacket* subAckPacket = new SubAckPacket();
         subAckPacket->fixedVariableHeader.packetID = packetId;
-        uint8_t* rc = new uint8_t[1];
-        rc[0] = reasonCode;
-        subAckPacket->payload.data = rc;
+        std::vector<uint8_t> rc;
+        rc.reserve(1);
+        rc.push_back(reasonCode);
+        subAckPacket->payload.data = rc.data();
         if (properties)
         { subAckPacket->props.captureProperties(*properties); }
         subAckPacket->payload.setExpectedPacketSize(1);
@@ -187,10 +189,11 @@ namespace MqttV5
         const uint16_t packetId, std::vector<uint8_t> reasons, Properties* properties) {
         SubAckPacket* subAckPacket = new SubAckPacket();
         subAckPacket->fixedVariableHeader.packetID = packetId;
-        uint8_t* buffer = new uint8_t[reasons.size()];
-        std::copy(reasons.begin(), reasons.end(), buffer);
-        auto reasonsSize = subAckPacket->payload.deserialize(buffer, (uint32_t)reasons.size());
-        delete[] buffer;
+        std::vector<uint8_t> buffer;
+        buffer.reserve(reasons.size());
+        std::copy(reasons.begin(), reasons.end(), buffer.data());
+        auto reasonsSize =
+            subAckPacket->payload.deserialize(buffer.data(), (uint32_t)reasons.size());
         if (properties)
         { subAckPacket->props.captureProperties(*properties); }
         subAckPacket->payload.setExpectedPacketSize(reasonsSize);
@@ -203,10 +206,11 @@ namespace MqttV5
                                                                    Properties* properties) {
         UnsubAckPacket* unSubAckPacket = new UnsubAckPacket();
         unSubAckPacket->fixedVariableHeader.packetID = packetId;
-        uint8_t* buffer = new uint8_t[reasons.size()];
-        std::copy(reasons.begin(), reasons.end(), buffer);
-        auto reasonsSize = unSubAckPacket->payload.deserialize(buffer, (uint32_t)reasons.size());
-        delete[] buffer;
+        std::vector<uint8_t> buffer;
+        buffer.reserve(reasons.size());
+        std::copy(reasons.begin(), reasons.end(), buffer.data());
+        auto reasonsSize =
+            unSubAckPacket->payload.deserialize(buffer.data(), (uint32_t)reasons.size());
         if (properties)
         { unSubAckPacket->props.captureProperties(*properties); }
         unSubAckPacket->payload.setExpectedPacketSize(reasonsSize);
