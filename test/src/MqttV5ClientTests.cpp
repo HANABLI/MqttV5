@@ -672,12 +672,10 @@ TEST_F(MqttV5ClientTests, UnsubscribeThenUnsubAck_test) {
     auto unsubscribePacket =
         MqttV5::PacketsBuilder::buildUnsubAckPacket(1, {ReasonCode::Success}, &props);
     auto unsubPacketSize = unsubscribePacket->computePacketSize(true);
-
-    std::vector<uint8_t> subAckBuffer;
-    subAckBuffer.reserve(static_cast<size_t>(unsubPacketSize));
-    auto subPackSize = unsubscribePacket->serialize(subAckBuffer.data());
-    if (unsubPacketSize != subPackSize)
-    { subAckBuffer.resize(subPackSize); }
+    auto subAckBuffer = new uint8_t[(size_t)unsubPacketSize];
+    auto subPackSize = unsubscribePacket->serialize(subAckBuffer);
+    std::vector<uint8_t> subAckIncomData(subAckBuffer, subAckBuffer + subPackSize);
+    delete[] subAckBuffer;
     std::promise<void> unSubAcktransactionCompleted;
     unsubscribeTransaction->SetCompletionDelegate(
         [&unSubAcktransactionCompleted](std::vector<Storage::ReasonCode>& reasons)
@@ -687,7 +685,7 @@ TEST_F(MqttV5ClientTests, UnsubscribeThenUnsubAck_test) {
             { EXPECT_EQ(Storage::ReasonCode::Success, i); }
         });
 
-    connection->SimulateIncoming(subAckBuffer);
+    connection->SimulateIncoming({subAckIncomData.begin(), subAckIncomData.end()});
 
     auto transactionWasCompleted = unSubAcktransactionCompleted.get_future();
     ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
@@ -724,12 +722,10 @@ TEST_F(MqttV5ClientTests, PublishQoS1ThenPubAckTransaction_test) {
     ASSERT_EQ(ControlPacketType::PUBLISH, packet.header.getType());
     auto pubAckPacket = PacketsBuilder::buildPubAckPacket(packetID, ReasonCode::Success, &props);
     auto pubAckPacketSize = pubAckPacket->computePacketSize(true);
-    std::vector<uint8_t> pubAckBuffer;
-    pubAckBuffer.reserve(static_cast<size_t>(pubAckPacketSize));
-
-    auto pubPackSize = pubAckPacket->serialize(pubAckBuffer.data());
-    if (pubAckPacketSize != pubPackSize)
-    { pubAckBuffer.resize(pubPackSize); }
+    auto pubAckBuffer = new uint8_t[(size_t)pubAckPacketSize];
+    auto pubPackSize = pubAckPacket->serialize(pubAckBuffer);
+    std::vector<uint8_t> pubAckIncomData(pubAckBuffer, pubAckBuffer + pubPackSize);
+    delete[] pubAckBuffer;
     std::promise<void> pubAcktransactionCompleted;
     publishTransaction->SetCompletionDelegate(
         [&pubAcktransactionCompleted](std::vector<Storage::ReasonCode>& reasons)
@@ -739,7 +735,7 @@ TEST_F(MqttV5ClientTests, PublishQoS1ThenPubAckTransaction_test) {
             { EXPECT_EQ(Storage::ReasonCode::Success, i); }
         });
 
-    connection->SimulateIncoming(pubAckBuffer);
+    connection->SimulateIncoming(pubAckIncomData);
     auto transactionWasCompleted = pubAcktransactionCompleted.get_future();
     ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
     EXPECT_EQ(MqttClient::Transaction::State::Success, publishTransaction->transactionState);
@@ -774,12 +770,10 @@ TEST_F(MqttV5ClientTests, PublishQoS2ThenPubRecPubRelPubComTransactions_test) {
     ASSERT_EQ(ControlPacketType::PUBLISH, pubPacket.header.getType());
     auto pubRecPacket = PacketsBuilder::buildPubRecPacket(packetID, ReasonCode::Success, &props);
     auto pubRecPacketSize = pubRecPacket->computePacketSize(true);
-    std::vector<uint8_t> pubRecBuffer;
-    pubRecBuffer.reserve(static_cast<size_t>(pubRecPacketSize));
-
-    auto pubRecSerSize = pubRecPacket->serialize(pubRecBuffer.data());
-    if (pubRecSerSize != pubRecPacketSize)
-    { pubRecBuffer.resize(pubRecSerSize); }
+    auto pubRecBuffer = new uint8_t[(size_t)pubRecPacketSize];
+    auto pubRecSerSize = pubRecPacket->serialize(pubRecBuffer);
+    std::vector<uint8_t> pubRecData(pubRecBuffer, pubRecBuffer + pubRecSerSize);
+    delete[] pubRecBuffer;
     std::promise<void> publishtransactionCompleted;
     publishTransaction->SetCompletionDelegate(
         [&publishtransactionCompleted](std::vector<Storage::ReasonCode>& reasons)
@@ -788,7 +782,7 @@ TEST_F(MqttV5ClientTests, PublishQoS2ThenPubRecPubRelPubComTransactions_test) {
             for (const Storage::ReasonCode& i : reasons)
             { EXPECT_EQ(Storage::ReasonCode::Success, i); }
         });
-    connection->SimulateIncoming(pubRecBuffer);
+    connection->SimulateIncoming(pubRecData);
     auto transactionWasCompleted = publishtransactionCompleted.get_future();
     ASSERT_EQ(std::future_status::timeout,
               transactionWasCompleted.wait_for(std::chrono::seconds(1)));
@@ -798,12 +792,11 @@ TEST_F(MqttV5ClientTests, PublishQoS2ThenPubRecPubRelPubComTransactions_test) {
     ASSERT_EQ(ControlPacketType::PUBREL, packet.header.getType());
     auto pubCompPacket = PacketsBuilder::buildPubCompPacket(packetID, ReasonCode::Success, &props);
     auto pubCompPacketSize = pubCompPacket->computePacketSize(true);
-    std::vector<uint8_t> pubCompBuffer;
-    pubCompBuffer.reserve(static_cast<size_t>(pubCompPacketSize));
-    auto pubCompSerSize = pubCompPacket->serialize(pubCompBuffer.data());
-    if (pubCompPacketSize != pubCompSerSize)
-    { pubCompBuffer.resize(pubCompSerSize); }
-    connection->SimulateIncoming(pubCompBuffer);
+    auto pubCompBuffer = new uint8_t[(size_t)pubCompPacketSize];
+    auto pubCompSerSize = pubCompPacket->serialize(pubCompBuffer);
+    std::vector<uint8_t> pubCompData(pubCompBuffer, pubCompBuffer + pubCompSerSize);
+    delete[] pubCompBuffer;
+    connection->SimulateIncoming(pubCompData);
     ASSERT_EQ(std::future_status::ready, transactionWasCompleted.wait_for(std::chrono::seconds(1)));
     ASSERT_EQ(MqttClient::Transaction::State::Success, publishTransaction->transactionState);
 }
@@ -834,14 +827,11 @@ TEST_F(MqttV5ClientTests, HandlePublishQos1_test) {
                                                             (uint32_t)utfPayload.size(),
                                                             QoSDelivery::AtLeastOne, false, &props);
     auto publishPacketSize = publishPacket->computePacketSize(true);
-    std::vector<uint8_t> publishPacketBuf;
-    publishPacketBuf.reserve(static_cast<size_t>(publishPacketSize));
+    uint8_t* publishPacketBuf = new uint8_t[(size_t)publishPacketSize];
+    auto publishPacketSerSize = publishPacket->serialize(publishPacketBuf);
+    std::vector<uint8_t> data(publishPacketBuf, publishPacketBuf + publishPacketSerSize);
 
-    auto publishPacketSerSize = publishPacket->serialize(publishPacketBuf.data());
-    if (publishPacketSerSize != publishPacketSize)
-    { publishPacketBuf.resize(publishPacketSerSize); }
-
-    connection->SimulateIncoming(publishPacketBuf);
+    connection->SimulateIncoming(data);
     ASSERT_EQ("sensors/+/temp", app->receivedTopics.back());
     ASSERT_EQ(payload, app->receivedPayloads.back());
 
@@ -878,14 +868,11 @@ TEST_F(MqttV5ClientTests, HandlePublishQos2_test) {
                                                             (uint32_t)utfPayload.size(),
                                                             QoSDelivery::ExactlyOne, false, &props);
     auto publishPacketSize = publishPacket->computePacketSize(true);
-    std::vector<uint8_t> publishPacketBuf;
-    publishPacketBuf.reserve(static_cast<size_t>(publishPacketSize));
-    auto publishPacketSerSize = publishPacket->serialize(publishPacketBuf.data());
+    uint8_t* publishPacketBuf = new uint8_t[(size_t)publishPacketSize];
+    auto publishPacketSerSize = publishPacket->serialize(publishPacketBuf);
+    std::vector<uint8_t> data(publishPacketBuf, publishPacketBuf + publishPacketSerSize);
 
-    if (publishPacketSerSize != publishPacketSize)
-    { publishPacketBuf.resize(publishPacketSerSize); }
-
-    connection->SimulateIncoming(publishPacketBuf);
+    connection->SimulateIncoming(data);
     ASSERT_EQ("sensors/+/temp", app->receivedTopics.back());
     ASSERT_EQ(payload, app->receivedPayloads.back());
 
@@ -897,15 +884,12 @@ TEST_F(MqttV5ClientTests, HandlePublishQos2_test) {
 
     auto pubRelPacket = PacketsBuilder::buildPubRelPacket(packetId, ReasonCode::Success, &props);
     auto pubRelPacketSize = pubRelPacket->computePacketSize(true);
-    std::vector<uint8_t> pubRelPacketBuf;
-    pubRelPacketBuf.reserve(static_cast<size_t>(pubRelPacketSize));
-
-    auto pubRelPacketSerSize = pubRelPacket->serialize(pubRelPacketBuf.data());
-    if (publishPacketSerSize != pubRelPacketSize)
-    { pubRelPacketBuf.resize(pubRelPacketSerSize); }
+    uint8_t* pubRelPacketBuf = new uint8_t[(size_t)pubRelPacketSize];
+    auto pubRelPacketSerSize = pubRelPacket->serialize(pubRelPacketBuf);
+    std::vector<uint8_t> pubRelData(pubRelPacketBuf, pubRelPacketBuf + pubRelPacketSerSize);
     std::promise<void> pubReltransactionCompleted;
 
-    connection->SimulateIncoming(pubRelPacketBuf);
+    connection->SimulateIncoming(pubRelData);
 
     const auto pubComp = connection->LastOutgoing();
 
